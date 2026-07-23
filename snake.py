@@ -1,37 +1,112 @@
 import pygame
+import numpy as np
 import random
 import sys
+import os
 
 pygame.init()
+pygame.mixer.init()
 
 # ---------- Configurações básicas ----------
 LARGURA, ALTURA = 600, 400
 TAMANHO_BLOCO = 20
-VELOCIDADE = 10  # quadros por segundo (quanto maior, mais rápido)
+VELOCIDADE_INICIAL = 8
+VELOCIDADE_MAXIMA = 20
+PONTOS_POR_NIVEL = 3  # a cada X pontos, a velocidade aumenta 1
 
-# Cores
+# Cores gerais (usadas fora dos temas)
 PRETO = (0, 0, 0)
 BRANCO = (255, 255, 255)
-VERDE = (0, 200, 0)
-VERDE_ESCURO = (0, 120, 0)
-VERMELHO = (200, 0, 0)
 CINZA = (40, 40, 40)
+AMARELO = (230, 200, 40)
+
+CAMINHO_BASE = os.path.dirname(os.path.abspath(__file__))
+CAMINHO_RECORDE = os.path.join(CAMINHO_BASE, "recorde.txt")
 
 tela = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Jogo da Cobrinha")
 relogio = pygame.time.Clock()
-fonte = pygame.font.SysFont("arial", 24)
-fonte_grande = pygame.font.SysFont("arial", 48)
+fonte = pygame.font.SysFont("arial", 22)
+fonte_grande = pygame.font.SysFont("arial", 46)
+
+# ---------- Temas ----------
+TEMAS = [
+    {
+        "nome": "Clássico",
+        "fundo": PRETO,
+        "grade": CINZA,
+        "cabeca": (0, 120, 0),
+        "corpo": (0, 200, 0),
+        "comida": (200, 0, 0),
+    },
+    {
+        "nome": "Neon",
+        "fundo": (10, 10, 25),
+        "grade": (30, 30, 55),
+        "cabeca": (255, 0, 200),
+        "corpo": (0, 220, 255),
+        "comida": (255, 230, 0),
+    },
+    {
+        "nome": "Gelo",
+        "fundo": (15, 30, 45),
+        "grade": (35, 55, 70),
+        "cabeca": (200, 240, 255),
+        "corpo": (100, 190, 230),
+        "comida": (255, 120, 120),
+    },
+    {
+        "nome": "Deserto",
+        "fundo": (40, 30, 15),
+        "grade": (70, 55, 30),
+        "cabeca": (150, 90, 20),
+        "corpo": (220, 170, 60),
+        "comida": (80, 160, 60),
+    },
+]
 
 
-def desenhar_texto(texto, fonte, cor, x, y, centralizado=False):
-    superficie = fonte.render(texto, True, cor)
+# ---------- Sons (gerados na hora, sem precisar de arquivos externos) ----------
+def gerar_tom(frequencia, duracao=0.12, volume=0.3, taxa=44100):
+    n_amostras = int(taxa * duracao)
+    t = np.linspace(0, duracao, n_amostras, False)
+    onda = np.sin(frequencia * t * 2 * np.pi)
+    envelope = np.linspace(1, 0, n_amostras)  # evita "clique" no final do som
+    onda = (onda * envelope * volume * 32767).astype(np.int16)
+    estereo = np.column_stack((onda, onda))
+    return pygame.sndarray.make_sound(np.ascontiguousarray(estereo))
+
+
+SOM_COMER = gerar_tom(880, duracao=0.09, volume=0.35)
+SOM_COLIDIR = gerar_tom(140, duracao=0.35, volume=0.4)
+SOM_SELECIONAR = gerar_tom(600, duracao=0.06, volume=0.25)
+
+
+# ---------- Recorde ----------
+def carregar_recorde():
+    if os.path.exists(CAMINHO_RECORDE):
+        try:
+            with open(CAMINHO_RECORDE, "r") as arquivo:
+                return int(arquivo.read().strip())
+        except (ValueError, OSError):
+            return 0
+    return 0
+
+
+def salvar_recorde(pontuacao):
+    with open(CAMINHO_RECORDE, "w") as arquivo:
+        arquivo.write(str(pontuacao))
+
+
+def desenhar_texto(texto, fonte_usada, cor, x, y, centralizado=False):
+    superficie = fonte_usada.render(texto, True, cor)
     rect = superficie.get_rect()
     if centralizado:
         rect.center = (x, y)
     else:
         rect.topleft = (x, y)
     tela.blit(superficie, rect)
+    return rect
 
 
 def gerar_comida(cobra):
@@ -44,50 +119,135 @@ def gerar_comida(cobra):
             return pos
 
 
-def tela_de_fim(pontuacao):
-    tela.fill(PRETO)
-    desenhar_texto("Você perdeu!", fonte_grande, VERMELHO, LARGURA // 2, ALTURA // 2 - 40, centralizado=True)
-    desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, LARGURA // 2, ALTURA // 2 + 10, centralizado=True)
-    desenhar_texto("Pressione R para jogar novamente ou Q para sair", fonte, BRANCO, LARGURA // 2, ALTURA // 2 + 50, centralizado=True)
+# ---------- Menu principal ----------
+def menu_principal(indice_tema, recorde):
+    opcoes = ["Jogar", "Tema", "Sair"]
+    selecionado = 0
+
+    while True:
+        tema = TEMAS[indice_tema]
+        tela.fill(PRETO)
+        desenhar_texto("JOGO DA COBRINHA", fonte_grande, AMARELO, LARGURA // 2, 70, centralizado=True)
+        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, 120, centralizado=True)
+
+        for i, opcao in enumerate(opcoes):
+            cor = AMARELO if i == selecionado else BRANCO
+            texto = opcao
+            if opcao == "Tema":
+                texto = f"< Tema: {tema['nome']} >"
+            desenhar_texto(texto, fonte, cor, LARGURA // 2, 190 + i * 45, centralizado=True)
+
+        desenhar_texto(
+            "seta cima/baixo: navegar   esquerda/direita: trocar tema   Enter: confirmar",
+            fonte,
+            (150, 150, 150),
+            LARGURA // 2,
+            ALTURA - 30,
+            centralizado=True,
+        )
+        pygame.display.update()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_UP, pygame.K_w):
+                    selecionado = (selecionado - 1) % len(opcoes)
+                    SOM_SELECIONAR.play()
+                elif evento.key in (pygame.K_DOWN, pygame.K_s):
+                    selecionado = (selecionado + 1) % len(opcoes)
+                    SOM_SELECIONAR.play()
+                elif evento.key in (pygame.K_LEFT, pygame.K_a) and opcoes[selecionado] == "Tema":
+                    indice_tema = (indice_tema - 1) % len(TEMAS)
+                    SOM_SELECIONAR.play()
+                elif evento.key in (pygame.K_RIGHT, pygame.K_d) and opcoes[selecionado] == "Tema":
+                    indice_tema = (indice_tema + 1) % len(TEMAS)
+                    SOM_SELECIONAR.play()
+                elif evento.key == pygame.K_RETURN:
+                    if opcoes[selecionado] == "Jogar":
+                        return indice_tema
+                    elif opcoes[selecionado] == "Sair":
+                        pygame.quit()
+                        sys.exit()
+
+        relogio.tick(30)
+
+
+def tela_de_pausa():
+    overlay = pygame.Surface((LARGURA, ALTURA))
+    overlay.set_alpha(180)
+    overlay.fill(PRETO)
+    tela.blit(overlay, (0, 0))
+    desenhar_texto("PAUSADO", fonte_grande, AMARELO, LARGURA // 2, ALTURA // 2 - 20, centralizado=True)
+    desenhar_texto("Pressione P ou ESC para continuar", fonte, BRANCO, LARGURA // 2, ALTURA // 2 + 30, centralizado=True)
     pygame.display.update()
 
-    esperando = True
-    while esperando:
+
+def tela_de_fim(pontuacao, recorde, bateu_recorde):
+    tela.fill(PRETO)
+    desenhar_texto("Você perdeu!", fonte_grande, (200, 40, 40), LARGURA // 2, ALTURA // 2 - 60, centralizado=True)
+    desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, LARGURA // 2, ALTURA // 2 - 10, centralizado=True)
+    if bateu_recorde:
+        desenhar_texto("Novo recorde!", fonte, AMARELO, LARGURA // 2, ALTURA // 2 + 20, centralizado=True)
+    else:
+        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, ALTURA // 2 + 20, centralizado=True)
+    desenhar_texto(
+        "R: jogar de novo    M: menu    Q: sair",
+        fonte,
+        (180, 180, 180),
+        LARGURA // 2,
+        ALTURA // 2 + 60,
+        centralizado=True,
+    )
+    pygame.display.update()
+
+    while True:
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_r:
-                    return True
+                    return "jogar"
+                if evento.key == pygame.K_m:
+                    return "menu"
                 if evento.key == pygame.K_q:
                     pygame.quit()
                     sys.exit()
-    return False
 
 
-def rodar_jogo():
+def rodar_jogo(indice_tema, recorde):
+    tema = TEMAS[indice_tema]
     cobra = [(LARGURA // 2, ALTURA // 2)]
     direcao = (TAMANHO_BLOCO, 0)
     proxima_direcao = direcao
     comida = gerar_comida(cobra)
     pontuacao = 0
+    pausado = False
 
-    rodando = True
-    while rodando:
+    while True:
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_UP, pygame.K_w) and direcao != (0, TAMANHO_BLOCO):
-                    proxima_direcao = (0, -TAMANHO_BLOCO)
-                elif evento.key in (pygame.K_DOWN, pygame.K_s) and direcao != (0, -TAMANHO_BLOCO):
-                    proxima_direcao = (0, TAMANHO_BLOCO)
-                elif evento.key in (pygame.K_LEFT, pygame.K_a) and direcao != (TAMANHO_BLOCO, 0):
-                    proxima_direcao = (-TAMANHO_BLOCO, 0)
-                elif evento.key in (pygame.K_RIGHT, pygame.K_d) and direcao != (-TAMANHO_BLOCO, 0):
-                    proxima_direcao = (TAMANHO_BLOCO, 0)
+                if evento.key in (pygame.K_ESCAPE, pygame.K_p):
+                    pausado = not pausado
+                elif not pausado:
+                    if evento.key in (pygame.K_UP, pygame.K_w) and direcao != (0, TAMANHO_BLOCO):
+                        proxima_direcao = (0, -TAMANHO_BLOCO)
+                    elif evento.key in (pygame.K_DOWN, pygame.K_s) and direcao != (0, -TAMANHO_BLOCO):
+                        proxima_direcao = (0, TAMANHO_BLOCO)
+                    elif evento.key in (pygame.K_LEFT, pygame.K_a) and direcao != (TAMANHO_BLOCO, 0):
+                        proxima_direcao = (-TAMANHO_BLOCO, 0)
+                    elif evento.key in (pygame.K_RIGHT, pygame.K_d) and direcao != (-TAMANHO_BLOCO, 0):
+                        proxima_direcao = (TAMANHO_BLOCO, 0)
+
+        if pausado:
+            tela_de_pausa()
+            relogio.tick(15)
+            continue
 
         direcao = proxima_direcao
         cabeca_atual = cobra[0]
@@ -100,49 +260,68 @@ def rodar_jogo():
             or nova_cabeca[1] < 0
             or nova_cabeca[1] >= ALTURA
         ):
+            SOM_COLIDIR.play()
             return pontuacao
 
         # Colisão com o próprio corpo
         if nova_cabeca in cobra:
+            SOM_COLIDIR.play()
             return pontuacao
 
         cobra.insert(0, nova_cabeca)
 
         if nova_cabeca == comida:
             pontuacao += 1
+            SOM_COMER.play()
             comida = gerar_comida(cobra)
         else:
             cobra.pop()
 
         # ---------- Desenho ----------
-        tela.fill(PRETO)
+        tela.fill(tema["fundo"])
 
-        # Grade sutil de fundo (opcional, ajuda a visualizar o grid)
         for x in range(0, LARGURA, TAMANHO_BLOCO):
-            pygame.draw.line(tela, CINZA, (x, 0), (x, ALTURA))
+            pygame.draw.line(tela, tema["grade"], (x, 0), (x, ALTURA))
         for y in range(0, ALTURA, TAMANHO_BLOCO):
-            pygame.draw.line(tela, CINZA, (0, y), (LARGURA, y))
+            pygame.draw.line(tela, tema["grade"], (0, y), (LARGURA, y))
 
-        # Comida
-        pygame.draw.rect(tela, VERMELHO, (*comida, TAMANHO_BLOCO, TAMANHO_BLOCO))
+        pygame.draw.rect(tela, tema["comida"], (*comida, TAMANHO_BLOCO, TAMANHO_BLOCO))
 
-        # Cobra
         for i, segmento in enumerate(cobra):
-            cor = VERDE_ESCURO if i == 0 else VERDE
+            cor = tema["cabeca"] if i == 0 else tema["corpo"]
             pygame.draw.rect(tela, cor, (*segmento, TAMANHO_BLOCO, TAMANHO_BLOCO))
 
-        # Pontuação
         desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, 10, 10)
+        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, 10, 35)
+        desenhar_texto("P/ESC: pausar", fonte, (150, 150, 150), LARGURA - 150, 10)
 
         pygame.display.update()
-        relogio.tick(VELOCIDADE)
+
+        velocidade_atual = min(VELOCIDADE_INICIAL + pontuacao // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA)
+        relogio.tick(velocidade_atual)
 
 
 def main():
-    jogar_novamente = True
-    while jogar_novamente:
-        pontuacao = rodar_jogo()
-        jogar_novamente = tela_de_fim(pontuacao)
+    recorde = carregar_recorde()
+    indice_tema = 0
+
+    while True:
+        indice_tema = menu_principal(indice_tema, recorde)
+
+        continuar = True
+        while continuar:
+            pontuacao = rodar_jogo(indice_tema, recorde)
+
+            bateu_recorde = pontuacao > recorde
+            if bateu_recorde:
+                recorde = pontuacao
+                salvar_recorde(recorde)
+
+            escolha = tela_de_fim(pontuacao, recorde, bateu_recorde)
+            if escolha == "menu":
+                continuar = False
+            elif escolha == "jogar":
+                continue
 
 
 if __name__ == "__main__":
