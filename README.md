@@ -25,9 +25,8 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - `tela_de_fim()` mostra a pontuação final e pergunta se quer jogar de novo
 - Sem sons, sem menu inicial, sem níveis — só o essencial pra já ficar jogável
 
-## Ideias de melhorias (pra ir escolhendo com calma)
+## Ideias de melhorias
 
-### Fáceis de começar
 - [ ] Tela de menu inicial (Jogar / Sair)
 - [ ] Guardar e mostrar recorde (high score) em um arquivo local
 - [ ] Aumentar a velocidade gradualmente conforme a pontuação sobe
