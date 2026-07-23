@@ -18,22 +18,36 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - Setas do teclado ou `W A S D` para mover
 - Ao perder: `R` para jogar novamente, `Q` para sair
 
+## Controles adicionais
+
+- `P` ou `ESC` durante o jogo: pausa / despausa
+- No menu: setas para navegar, `←`/`→` para trocar de tema, `Enter` para confirmar
+- Na tela de fim de jogo: `R` joga de novo, `M` volta ao menu, `Q` sai
+
 ## Como está estruturado hoje
 
-- `gerar_comida()` sorteia uma posição livre no grid para a comida
-- `rodar_jogo()` contém o loop principal: entrada do usuário, movimento, colisões e desenho
-- `tela_de_fim()` mostra a pontuação final e pergunta se quer jogar de novo
-- Sem sons, sem menu inicial, sem níveis — só o essencial pra já ficar jogável
+- `menu_principal()` tela inicial com opções Jogar / Tema / Sair
+- `gerar_tom()` gera os efeitos sonoros na hora (sem precisar de arquivos de áudio externos)
+- `carregar_recorde()` / `salvar_recorde()` leem e gravam o recorde em `recorde.txt` (criado ao lado do script)
+- `rodar_jogo()` contém o loop principal: entrada do usuário, pausa, movimento, colisões e desenho
+- `tela_de_pausa()` mostra um overlay semitransparente com "PAUSADO"
+- `tela_de_fim()` mostra a pontuação final, se bateu recorde, e as opções de jogar de novo/menu/sair
+- Velocidade aumenta a cada `PONTOS_POR_NIVEL` pontos, até um teto (`VELOCIDADE_MAXIMA`)
+- 4 temas prontos (Clássico, Neon, Gelo, Deserto) em `TEMAS`, escolhidos no menu
 
 ## Ideias de melhorias (pra ir escolhendo com calma)
 
+### Já implementadas
+- [x] Tela de menu inicial (Jogar / Sair)
+- [x] Guardar e mostrar recorde (high score) em um arquivo local
+- [x] Aumentar a velocidade gradualmente conforme a pontuação sobe
+- [x] Sons de efeito (comer, colidir) com `pygame.mixer`
+- [x] Pausar o jogo com `ESC` ou `P`
+- [x] Cores/skins diferentes para a cobra (escolher tema)
+
 ### Fáceis de começar
-- [ ] Tela de menu inicial (Jogar / Sair)
-- [ ] Guardar e mostrar recorde (high score) em um arquivo local
-- [ ] Aumentar a velocidade gradualmente conforme a pontuação sobe
-- [ ] Sons de efeito (comer, colidir) com `pygame.mixer`
-- [ ] Pausar o jogo com `ESC` ou `P`
-- [ ] Cores/skins diferentes para a cobra (escolher tema)
+- [ ] Tela de configurações separada (volume, velocidade inicial)
+- [ ] Contador visual do próximo aumento de velocidade
 
 ### Nível médio
 - [ ] Paredes "atravessáveis" (sair de um lado e entiar do outro, modo sem parede)
