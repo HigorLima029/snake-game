@@ -49,7 +49,6 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - [x] Tela de configurações separada (volume, velocidade inicial) — salva em `config.txt`
 - [x] Contador visual do próximo aumento de velocidade (texto + barra de progresso)
 
-### Fáceis de continuar
 
 ### Nível médio
 - [ ] Paredes "atravessáveis" (sair de um lado e entiar do outro, modo sem parede)
@@ -66,5 +65,3 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - [ ] Sistema de fases/níveis com objetivos diferentes
 - [ ] Ranking local com nomes dos jogadores (tipo os scores do ping pong)
 - [ ] Versão web (usando algo como `pygbag` para rodar pygame no navegador)
-
-Vá marcando aqui o que for implementando, assim dá pra acompanhar o progresso do projeto.
