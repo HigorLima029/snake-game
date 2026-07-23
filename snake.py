@@ -10,9 +10,10 @@ pygame.mixer.init()
 # ---------- Configurações básicas ----------
 LARGURA, ALTURA = 600, 400
 TAMANHO_BLOCO = 20
-VELOCIDADE_INICIAL = 8
 VELOCIDADE_MAXIMA = 20
 PONTOS_POR_NIVEL = 3  # a cada X pontos, a velocidade aumenta 1
+VELOCIDADE_INICIAL_MIN = 4
+VELOCIDADE_INICIAL_MAX = 15
 
 # Cores gerais (usadas fora dos temas)
 PRETO = (0, 0, 0)
@@ -22,6 +23,10 @@ AMARELO = (230, 200, 40)
 
 CAMINHO_BASE = os.path.dirname(os.path.abspath(__file__))
 CAMINHO_RECORDE = os.path.join(CAMINHO_BASE, "recorde.txt")
+CAMINHO_CONFIG = os.path.join(CAMINHO_BASE, "config.txt")
+
+# Configurações ajustáveis pelo jogador (volume e velocidade inicial)
+CONFIG = {"volume": 0.7, "velocidade_inicial": 8}
 
 tela = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Jogo da Cobrinha")
@@ -98,6 +103,33 @@ def salvar_recorde(pontuacao):
         arquivo.write(str(pontuacao))
 
 
+# ---------- Configurações (volume e velocidade inicial) ----------
+def carregar_config():
+    if os.path.exists(CAMINHO_CONFIG):
+        try:
+            with open(CAMINHO_CONFIG, "r") as arquivo:
+                linhas = arquivo.read().strip().splitlines()
+                volume = float(linhas[0])
+                velocidade_inicial = int(linhas[1])
+                CONFIG["volume"] = min(max(volume, 0.0), 1.0)
+                CONFIG["velocidade_inicial"] = min(
+                    max(velocidade_inicial, VELOCIDADE_INICIAL_MIN), VELOCIDADE_INICIAL_MAX
+                )
+        except (ValueError, OSError, IndexError):
+            pass
+    aplicar_volume()
+
+
+def salvar_config():
+    with open(CAMINHO_CONFIG, "w") as arquivo:
+        arquivo.write(f"{CONFIG['volume']}\n{CONFIG['velocidade_inicial']}")
+
+
+def aplicar_volume():
+    for som in (SOM_COMER, SOM_COLIDIR, SOM_SELECIONAR):
+        som.set_volume(CONFIG["volume"])
+
+
 def desenhar_texto(texto, fonte_usada, cor, x, y, centralizado=False):
     superficie = fonte_usada.render(texto, True, cor)
     rect = superficie.get_rect()
@@ -121,28 +153,28 @@ def gerar_comida(cobra):
 
 # ---------- Menu principal ----------
 def menu_principal(indice_tema, recorde):
-    opcoes = ["Jogar", "Tema", "Sair"]
+    opcoes = ["Jogar", "Tema", "Configurações", "Sair"]
     selecionado = 0
 
     while True:
         tema = TEMAS[indice_tema]
         tela.fill(PRETO)
-        desenhar_texto("JOGO DA COBRINHA", fonte_grande, AMARELO, LARGURA // 2, 70, centralizado=True)
-        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, 120, centralizado=True)
+        desenhar_texto("JOGO DA COBRINHA", fonte_grande, AMARELO, LARGURA // 2, 60, centralizado=True)
+        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, 110, centralizado=True)
 
         for i, opcao in enumerate(opcoes):
             cor = AMARELO if i == selecionado else BRANCO
             texto = opcao
             if opcao == "Tema":
                 texto = f"< Tema: {tema['nome']} >"
-            desenhar_texto(texto, fonte, cor, LARGURA // 2, 190 + i * 45, centralizado=True)
+            desenhar_texto(texto, fonte, cor, LARGURA // 2, 170 + i * 42, centralizado=True)
 
         desenhar_texto(
             "seta cima/baixo: navegar   esquerda/direita: trocar tema   Enter: confirmar",
             fonte,
             (150, 150, 150),
             LARGURA // 2,
-            ALTURA - 30,
+            ALTURA - 20,
             centralizado=True,
         )
         pygame.display.update()
@@ -167,9 +199,82 @@ def menu_principal(indice_tema, recorde):
                 elif evento.key == pygame.K_RETURN:
                     if opcoes[selecionado] == "Jogar":
                         return indice_tema
+                    elif opcoes[selecionado] == "Configurações":
+                        tela_configuracoes()
                     elif opcoes[selecionado] == "Sair":
                         pygame.quit()
                         sys.exit()
+
+        relogio.tick(30)
+
+
+def tela_configuracoes():
+    opcoes = ["Volume", "Velocidade inicial", "Voltar"]
+    selecionado = 0
+
+    while True:
+        tela.fill(PRETO)
+        desenhar_texto("CONFIGURAÇÕES", fonte_grande, AMARELO, LARGURA // 2, 60, centralizado=True)
+
+        for i, opcao in enumerate(opcoes):
+            cor = AMARELO if i == selecionado else BRANCO
+            if opcao == "Volume":
+                percentual = int(CONFIG["volume"] * 100)
+                texto = f"< Volume: {percentual}% >"
+            elif opcao == "Velocidade inicial":
+                texto = f"< Velocidade inicial: {CONFIG['velocidade_inicial']} >"
+            else:
+                texto = opcao
+            desenhar_texto(texto, fonte, cor, LARGURA // 2, 150 + i * 45, centralizado=True)
+
+        desenhar_texto(
+            "esquerda/direita: ajustar   Enter/ESC: voltar",
+            fonte,
+            (150, 150, 150),
+            LARGURA // 2,
+            ALTURA - 20,
+            centralizado=True,
+        )
+        pygame.display.update()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_UP, pygame.K_w):
+                    selecionado = (selecionado - 1) % len(opcoes)
+                    SOM_SELECIONAR.play()
+                elif evento.key in (pygame.K_DOWN, pygame.K_s):
+                    selecionado = (selecionado + 1) % len(opcoes)
+                    SOM_SELECIONAR.play()
+                elif evento.key in (pygame.K_LEFT, pygame.K_a):
+                    if opcoes[selecionado] == "Volume":
+                        CONFIG["volume"] = round(max(CONFIG["volume"] - 0.1, 0.0), 2)
+                        aplicar_volume()
+                        SOM_SELECIONAR.play()
+                        salvar_config()
+                    elif opcoes[selecionado] == "Velocidade inicial":
+                        CONFIG["velocidade_inicial"] = max(
+                            CONFIG["velocidade_inicial"] - 1, VELOCIDADE_INICIAL_MIN
+                        )
+                        SOM_SELECIONAR.play()
+                        salvar_config()
+                elif evento.key in (pygame.K_RIGHT, pygame.K_d):
+                    if opcoes[selecionado] == "Volume":
+                        CONFIG["volume"] = round(min(CONFIG["volume"] + 0.1, 1.0), 2)
+                        aplicar_volume()
+                        SOM_SELECIONAR.play()
+                        salvar_config()
+                    elif opcoes[selecionado] == "Velocidade inicial":
+                        CONFIG["velocidade_inicial"] = min(
+                            CONFIG["velocidade_inicial"] + 1, VELOCIDADE_INICIAL_MAX
+                        )
+                        SOM_SELECIONAR.play()
+                        salvar_config()
+                elif evento.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                    if opcoes[selecionado] == "Voltar" or evento.key == pygame.K_ESCAPE:
+                        return
 
         relogio.tick(30)
 
@@ -295,14 +400,29 @@ def rodar_jogo(indice_tema, recorde):
         desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, 10, 35)
         desenhar_texto("P/ESC: pausar", fonte, (150, 150, 150), LARGURA - 150, 10)
 
+        velocidade_atual = min(
+            CONFIG["velocidade_inicial"] + pontuacao // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA
+        )
+
+        # Contador visual do próximo aumento de velocidade
+        if velocidade_atual >= VELOCIDADE_MAXIMA:
+            desenhar_texto("Velocidade máxima!", fonte, AMARELO, 10, 60)
+        else:
+            pontos_restantes = PONTOS_POR_NIVEL - (pontuacao % PONTOS_POR_NIVEL)
+            desenhar_texto(f"Próx. velocidade em {pontos_restantes} ponto(s)", fonte, (150, 150, 150), 10, 60)
+            progresso = 1 - (pontos_restantes / PONTOS_POR_NIVEL)
+            largura_barra = 150
+            pygame.draw.rect(tela, (60, 60, 60), (10, 85, largura_barra, 8))
+            pygame.draw.rect(tela, AMARELO, (10, 85, int(largura_barra * progresso), 8))
+
         pygame.display.update()
 
-        velocidade_atual = min(VELOCIDADE_INICIAL + pontuacao // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA)
         relogio.tick(velocidade_atual)
 
 
 def main():
     recorde = carregar_recorde()
+    carregar_config()
     indice_tema = 0
 
     while True:

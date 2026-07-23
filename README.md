@@ -34,10 +34,11 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - `tela_de_fim()` mostra a pontuação final, se bateu recorde, e as opções de jogar de novo/menu/sair
 - Velocidade aumenta a cada `PONTOS_POR_NIVEL` pontos, até um teto (`VELOCIDADE_MAXIMA`)
 - 4 temas prontos (Clássico, Neon, Gelo, Deserto) em `TEMAS`, escolhidos no menu
+- `tela_configuracoes()` ajusta volume (0-100%) e velocidade inicial (4-15), salvando em `config.txt`
+- Durante o jogo, um texto + barra de progresso mostram quantos pontos faltam para o próximo aumento de velocidade
 
-## Ideias de melhorias
+## Ideias de melhorias (pra ir escolhendo com calma)
 
-<<<<<<< HEAD
 ### Já implementadas
 - [x] Tela de menu inicial (Jogar / Sair)
 - [x] Guardar e mostrar recorde (high score) em um arquivo local
@@ -45,18 +46,10 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - [x] Sons de efeito (comer, colidir) com `pygame.mixer`
 - [x] Pausar o jogo com `ESC` ou `P`
 - [x] Cores/skins diferentes para a cobra (escolher tema)
+- [x] Tela de configurações separada (volume, velocidade inicial) — salva em `config.txt`
+- [x] Contador visual do próximo aumento de velocidade (texto + barra de progresso)
 
-### Fáceis de começar
-- [ ] Tela de configurações separada (volume, velocidade inicial)
-- [ ] Contador visual do próximo aumento de velocidade
-=======
-- [ ] Tela de menu inicial (Jogar / Sair)
-- [ ] Guardar e mostrar recorde (high score) em um arquivo local
-- [ ] Aumentar a velocidade gradualmente conforme a pontuação sobe
-- [ ] Sons de efeito (comer, colidir) com `pygame.mixer`
-- [ ] Pausar o jogo com `ESC` ou `P`
-- [ ] Cores/skins diferentes para a cobra (escolher tema)
->>>>>>> 903861faa274795550009c667993a7769a19623e
+### Fáceis de continuar
 
 ### Nível médio
 - [ ] Paredes "atravessáveis" (sair de um lado e entiar do outro, modo sem parede)
