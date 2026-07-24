@@ -1,9 +1,12 @@
-import pygame
-import numpy as np
+import asyncio
+import json
+import math
+import os
 import random
 import sys
-import os
-import math
+
+import numpy as np
+import pygame
 
 pygame.init()
 pygame.mixer.init()
@@ -18,6 +21,9 @@ VELOCIDADE_INICIAL_MAX = 15
 FPS_RENDER = 60  # taxa de desenho (independente da velocidade lógica do jogo)
 DURACAO_ESCUDO_MS = 3000  # tempo de efeito da comida especial
 CHANCE_COMIDA_ESPECIAL = 0.2  # 20% de chance da comida nascer especial (dourada)
+PONTOS_POR_FASE = 8
+OBSTACULOS_POR_FASE = 2
+OBSTACULOS_MAXIMOS_FASE = 12
 
 # Cores gerais (usadas fora dos temas)
 PRETO = (0, 0, 0)
@@ -25,10 +31,16 @@ BRANCO = (255, 255, 255)
 CINZA = (40, 40, 40)
 AMARELO = (230, 200, 40)
 DOURADO = (255, 215, 0)
+COR_CABECA_2 = (230, 60, 210)
+COR_CORPO_2 = (150, 50, 150)
 
 CAMINHO_BASE = os.path.dirname(os.path.abspath(__file__))
 CAMINHO_RECORDE = os.path.join(CAMINHO_BASE, "recorde.txt")
 CAMINHO_CONFIG = os.path.join(CAMINHO_BASE, "config.txt")
+CAMINHO_MAPA = os.path.join(CAMINHO_BASE, "mapa_personalizado.txt")
+CAMINHO_RANKING = os.path.join(CAMINHO_BASE, "ranking.json")
+
+MODOS_JOGO = ["1 Jogador", "2 Jogadores", "Jogador vs Bot"]
 
 # Configurações ajustáveis pelo jogador
 CONFIG = {
@@ -36,6 +48,8 @@ CONFIG = {
     "velocidade_inicial": 8,
     "parede_atravessavel": False,
     "dificuldade": "Médio",
+    "modo_jogo": "1 Jogador",
+    "mapa_personalizado": False,
 }
 
 # Cada dificuldade define quantos obstáculos existem no mapa e um ajuste na velocidade base
@@ -46,11 +60,13 @@ DIFICULDADES = {
 }
 LISTA_DIFICULDADES = ["Fácil", "Médio", "Difícil"]
 
+DIRECOES = [(0, -TAMANHO_BLOCO), (0, TAMANHO_BLOCO), (-TAMANHO_BLOCO, 0), (TAMANHO_BLOCO, 0)]
+
 tela = pygame.display.set_mode((LARGURA, ALTURA))
 pygame.display.set_caption("Jogo da Cobrinha")
 relogio = pygame.time.Clock()
-fonte = pygame.font.SysFont("arial", 22)
-fonte_grande = pygame.font.SysFont("arial", 46)
+fonte = pygame.font.SysFont("arial", 20)
+fonte_grande = pygame.font.SysFont("arial", 44)
 
 # ---------- Temas ----------
 TEMAS = [
@@ -121,7 +137,7 @@ def salvar_recorde(pontuacao):
         arquivo.write(str(pontuacao))
 
 
-# ---------- Configurações (volume, velocidade, parede, dificuldade) ----------
+# ---------- Configurações (volume, velocidade, parede, dificuldade, modo, mapa) ----------
 def carregar_config():
     if os.path.exists(CAMINHO_CONFIG):
         try:
@@ -135,6 +151,10 @@ def carregar_config():
                     CONFIG["parede_atravessavel"] = linhas[2].strip() == "1"
                 if len(linhas) > 3 and linhas[3].strip() in DIFICULDADES:
                     CONFIG["dificuldade"] = linhas[3].strip()
+                if len(linhas) > 4 and linhas[4].strip() in MODOS_JOGO:
+                    CONFIG["modo_jogo"] = linhas[4].strip()
+                if len(linhas) > 5:
+                    CONFIG["mapa_personalizado"] = linhas[5].strip() == "1"
         except (ValueError, OSError, IndexError):
             pass
     aplicar_volume()
@@ -144,13 +164,67 @@ def salvar_config():
     with open(CAMINHO_CONFIG, "w") as arquivo:
         arquivo.write(
             f"{CONFIG['volume']}\n{CONFIG['velocidade_inicial']}\n"
-            f"{1 if CONFIG['parede_atravessavel'] else 0}\n{CONFIG['dificuldade']}"
+            f"{1 if CONFIG['parede_atravessavel'] else 0}\n{CONFIG['dificuldade']}\n"
+            f"{CONFIG['modo_jogo']}\n{1 if CONFIG['mapa_personalizado'] else 0}"
         )
 
 
 def aplicar_volume():
     for som in (SOM_COMER, SOM_COLIDIR, SOM_SELECIONAR):
         som.set_volume(CONFIG["volume"])
+
+
+# ---------- Ranking local ----------
+def carregar_ranking():
+    if os.path.exists(CAMINHO_RANKING):
+        try:
+            with open(CAMINHO_RANKING, "r") as arquivo:
+                dados = json.load(arquivo)
+                if isinstance(dados, list):
+                    return dados
+        except (ValueError, OSError):
+            pass
+    return []
+
+
+def salvar_ranking(ranking):
+    with open(CAMINHO_RANKING, "w") as arquivo:
+        json.dump(ranking, arquivo)
+
+
+def entra_no_ranking(ranking, pontuacao):
+    if len(ranking) < 10:
+        return True
+    return pontuacao > min(registro["pontuacao"] for registro in ranking)
+
+
+def adicionar_ao_ranking(ranking, nome, pontuacao):
+    novo_ranking = ranking + [{"nome": nome, "pontuacao": pontuacao}]
+    novo_ranking.sort(key=lambda registro: registro["pontuacao"], reverse=True)
+    return novo_ranking[:10]
+
+
+# ---------- Mapa personalizado ----------
+def carregar_mapa_personalizado():
+    celulas = []
+    if os.path.exists(CAMINHO_MAPA):
+        try:
+            with open(CAMINHO_MAPA, "r") as arquivo:
+                for linha in arquivo:
+                    linha = linha.strip()
+                    if not linha:
+                        continue
+                    x_str, y_str = linha.split(",")
+                    celulas.append((int(x_str), int(y_str)))
+        except (ValueError, OSError):
+            return []
+    return celulas
+
+
+def salvar_mapa_personalizado(celulas):
+    with open(CAMINHO_MAPA, "w") as arquivo:
+        for x, y in celulas:
+            arquivo.write(f"{x},{y}\n")
 
 
 def desenhar_texto(texto, fonte_usada, cor, x, y, centralizado=False):
@@ -224,18 +298,146 @@ def criar_particulas(x, y, cor, quantidade=14):
     return [Particula(centro_x, centro_y, cor) for _ in range(quantidade)]
 
 
+# ---------- IA do bot ----------
+def oposto(direcao):
+    return (-direcao[0], -direcao[1])
+
+
+def escolher_direcao_bot(cabeca, direcao_atual, comida, celulas_perigosas):
+    candidatas = [d for d in DIRECOES if d != oposto(direcao_atual)]
+    seguras = []
+    for direcao in candidatas:
+        proximo = (cabeca[0] + direcao[0], cabeca[1] + direcao[1])
+        if CONFIG["parede_atravessavel"]:
+            proximo = (proximo[0] % LARGURA, proximo[1] % ALTURA)
+        elif proximo[0] < 0 or proximo[0] >= LARGURA or proximo[1] < 0 or proximo[1] >= ALTURA:
+            continue
+        if proximo in celulas_perigosas:
+            continue
+        seguras.append((direcao, proximo))
+
+    if not seguras:
+        return candidatas[0] if candidatas else direcao_atual
+
+    def distancia(pos):
+        return abs(pos[0] - comida[0]) + abs(pos[1] - comida[1])
+
+    seguras.sort(key=lambda item: distancia(item[1]))
+    return seguras[0][0]
+
+
+# ---------- Fases ----------
+def calcular_fase(pontuacao):
+    return 1 + pontuacao // PONTOS_POR_FASE
+
+
+def obstaculos_extra_da_fase(fase):
+    return min((fase - 1) * OBSTACULOS_POR_FASE, OBSTACULOS_MAXIMOS_FASE)
+
+
+def criar_cobra(posicao_inicial, direcao_inicial, controlador):
+    return {
+        "corpo": [posicao_inicial],
+        "corpo_anterior": [posicao_inicial],
+        "direcao": direcao_inicial,
+        "proxima_direcao": direcao_inicial,
+        "pontuacao": 0,
+        "escudo_ate": 0,
+        "viva": True,
+        "controlador": controlador,  # "jogador1", "jogador2" ou "bot"
+    }
+
+
+def interpolar_posicao(origem, destino, progresso):
+    # Evita um "arrastão" visual quando a cobra atravessa de um lado ao outro da tela
+    dx = destino[0] - origem[0]
+    dy = destino[1] - origem[1]
+    if abs(dx) > TAMANHO_BLOCO * 1.5 or abs(dy) > TAMANHO_BLOCO * 1.5:
+        return destino
+    return (origem[0] + dx * progresso, origem[1] + dy * progresso)
+
+
+def desenhar_jogo(
+    tema, cobras, progresso, comida, comida_especial, obstaculos,
+    recorde, velocidade_atual, fase_atual, aviso_fase_ate, particulas,
+):
+    tela.fill(tema["fundo"])
+
+    for x in range(0, LARGURA, TAMANHO_BLOCO):
+        pygame.draw.line(tela, tema["grade"], (x, 0), (x, ALTURA))
+    for y in range(0, ALTURA, TAMANHO_BLOCO):
+        pygame.draw.line(tela, tema["grade"], (0, y), (LARGURA, y))
+
+    for obstaculo in obstaculos:
+        pygame.draw.rect(tela, (95, 95, 95), (*obstaculo, TAMANHO_BLOCO, TAMANHO_BLOCO))
+        pygame.draw.rect(tela, (60, 60, 60), (*obstaculo, TAMANHO_BLOCO, TAMANHO_BLOCO), 2)
+
+    if comida_especial:
+        pulso = int(3 * math.sin(pygame.time.get_ticks() / 120))
+        centro = (comida[0] + TAMANHO_BLOCO // 2, comida[1] + TAMANHO_BLOCO // 2)
+        pygame.draw.circle(tela, DOURADO, centro, TAMANHO_BLOCO // 2 + 3 + pulso)
+        pygame.draw.circle(tela, (255, 255, 200), centro, TAMANHO_BLOCO // 3)
+    else:
+        pygame.draw.rect(tela, tema["comida"], (*comida, TAMANHO_BLOCO, TAMANHO_BLOCO))
+
+    for particula in particulas:
+        particula.desenhar(tela)
+
+    agora = pygame.time.get_ticks()
+    for indice_cobra, cobra in enumerate(cobras):
+        cor_cabeca, cor_corpo = (tema["cabeca"], tema["corpo"]) if indice_cobra == 0 else (COR_CABECA_2, COR_CORPO_2)
+        protegido = agora < cobra["escudo_ate"]
+        for i, segmento_novo in enumerate(cobra["corpo"]):
+            origem = cobra["corpo_anterior"][i] if i < len(cobra["corpo_anterior"]) else segmento_novo
+            x, y = interpolar_posicao(origem, segmento_novo, progresso)
+            cor = cor_cabeca if i == 0 else cor_corpo
+            if not cobra["viva"]:
+                cor = (80, 80, 80)
+            pygame.draw.rect(tela, cor, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO))
+            if protegido:
+                pygame.draw.rect(tela, DOURADO, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO), 2)
+
+    pontuacao_max = max(c["pontuacao"] for c in cobras)
+
+    if len(cobras) > 1:
+        rotulo2 = "Bot" if cobras[1]["controlador"] == "bot" else "Jogador 2"
+        desenhar_texto(f"Jogador 1: {cobras[0]['pontuacao']}", fonte, BRANCO, 10, 10)
+        desenhar_texto(f"{rotulo2}: {cobras[1]['pontuacao']}", fonte, (230, 140, 230), 10, 33)
+    else:
+        desenhar_texto(f"Pontuação: {cobras[0]['pontuacao']}", fonte, BRANCO, 10, 10)
+        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, 10, 33)
+
+    desenhar_texto(f"Fase: {fase_atual}", fonte, (170, 170, 170), LARGURA - 80, 33)
+    desenhar_texto("P/ESC: pausar", fonte, (150, 150, 150), LARGURA - 140, 10)
+
+    if velocidade_atual >= VELOCIDADE_MAXIMA:
+        desenhar_texto("Velocidade máxima!", fonte, AMARELO, 10, 58)
+    else:
+        pontos_restantes = PONTOS_POR_NIVEL - (pontuacao_max % PONTOS_POR_NIVEL)
+        desenhar_texto(f"Próx. velocidade em {pontos_restantes} ponto(s)", fonte, (150, 150, 150), 10, 58)
+        progresso_barra = 1 - (pontos_restantes / PONTOS_POR_NIVEL)
+        largura_barra = 150
+        pygame.draw.rect(tela, (60, 60, 60), (10, 82, largura_barra, 8))
+        pygame.draw.rect(tela, AMARELO, (10, 82, int(largura_barra * progresso_barra), 8))
+
+    if agora < aviso_fase_ate:
+        desenhar_texto(f"Fase {fase_atual}!", fonte_grande, AMARELO, LARGURA // 2, ALTURA // 2 - 80, centralizado=True)
+
+    pygame.display.update()
+
+
 # ---------- Menu principal ----------
-def menu_principal(indice_tema, recorde):
-    opcoes = ["Jogar", "Tema", "Configurações", "Sair"]
+async def menu_principal(indice_tema, recorde):
+    opcoes = ["Jogar", "Tema", "Configurações", "Editor de Mapa", "Ranking", "Sair"]
     selecionado = 0
 
     while True:
         tema = TEMAS[indice_tema]
         tela.fill(PRETO)
-        desenhar_texto("JOGO DA COBRINHA", fonte_grande, AMARELO, LARGURA // 2, 55, centralizado=True)
-        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, 100, centralizado=True)
+        desenhar_texto("JOGO DA COBRINHA", fonte_grande, AMARELO, LARGURA // 2, 42, centralizado=True)
         desenhar_texto(
-            f"Dificuldade atual: {CONFIG['dificuldade']}", fonte, (170, 170, 170), LARGURA // 2, 125, centralizado=True
+            f"Recorde: {recorde}   |   Dificuldade: {CONFIG['dificuldade']}   |   Modo: {CONFIG['modo_jogo']}",
+            fonte, (170, 170, 170), LARGURA // 2, 78, centralizado=True,
         )
 
         for i, opcao in enumerate(opcoes):
@@ -243,14 +445,14 @@ def menu_principal(indice_tema, recorde):
             texto = opcao
             if opcao == "Tema":
                 texto = f"< Tema: {tema['nome']} >"
-            desenhar_texto(texto, fonte, cor, LARGURA // 2, 175 + i * 42, centralizado=True)
+            desenhar_texto(texto, fonte, cor, LARGURA // 2, 118 + i * 36, centralizado=True)
 
         desenhar_texto(
             "seta cima/baixo: navegar   esquerda/direita: trocar tema   Enter: confirmar",
             fonte,
             (150, 150, 150),
             LARGURA // 2,
-            ALTURA - 20,
+            ALTURA - 15,
             centralizado=True,
         )
         pygame.display.update()
@@ -276,21 +478,26 @@ def menu_principal(indice_tema, recorde):
                     if opcoes[selecionado] == "Jogar":
                         return indice_tema
                     elif opcoes[selecionado] == "Configurações":
-                        tela_configuracoes()
+                        await tela_configuracoes()
+                    elif opcoes[selecionado] == "Editor de Mapa":
+                        await tela_editor_mapa()
+                    elif opcoes[selecionado] == "Ranking":
+                        await tela_ranking()
                     elif opcoes[selecionado] == "Sair":
                         pygame.quit()
                         sys.exit()
 
+        await asyncio.sleep(0)
         relogio.tick(30)
 
 
-def tela_configuracoes():
-    opcoes = ["Volume", "Velocidade inicial", "Parede", "Dificuldade", "Voltar"]
+async def tela_configuracoes():
+    opcoes = ["Volume", "Velocidade inicial", "Parede", "Dificuldade", "Modo", "Mapa", "Voltar"]
     selecionado = 0
 
     while True:
         tela.fill(PRETO)
-        desenhar_texto("CONFIGURAÇÕES", fonte_grande, AMARELO, LARGURA // 2, 50, centralizado=True)
+        desenhar_texto("CONFIGURAÇÕES", fonte_grande, AMARELO, LARGURA // 2, 35, centralizado=True)
 
         for i, opcao in enumerate(opcoes):
             cor = AMARELO if i == selecionado else BRANCO
@@ -303,16 +510,21 @@ def tela_configuracoes():
                 texto = f"< Parede: {estado} >"
             elif opcao == "Dificuldade":
                 texto = f"< Dificuldade: {CONFIG['dificuldade']} >"
+            elif opcao == "Modo":
+                texto = f"< Modo: {CONFIG['modo_jogo']} >"
+            elif opcao == "Mapa":
+                estado = "Personalizado" if CONFIG["mapa_personalizado"] else "Aleatório"
+                texto = f"< Mapa: {estado} >"
             else:
                 texto = opcao
-            desenhar_texto(texto, fonte, cor, LARGURA // 2, 115 + i * 40, centralizado=True)
+            desenhar_texto(texto, fonte, cor, LARGURA // 2, 78 + i * 33, centralizado=True)
 
         desenhar_texto(
             "esquerda/direita: ajustar   Enter/ESC: voltar",
             fonte,
             (150, 150, 150),
             LARGURA // 2,
-            ALTURA - 20,
+            ALTURA - 15,
             centralizado=True,
         )
         pygame.display.update()
@@ -348,6 +560,12 @@ def tela_configuracoes():
                         idx = LISTA_DIFICULDADES.index(CONFIG["dificuldade"])
                         idx = (idx + (1 if direita else -1)) % len(LISTA_DIFICULDADES)
                         CONFIG["dificuldade"] = LISTA_DIFICULDADES[idx]
+                    elif opcao == "Modo":
+                        idx = MODOS_JOGO.index(CONFIG["modo_jogo"])
+                        idx = (idx + (1 if direita else -1)) % len(MODOS_JOGO)
+                        CONFIG["modo_jogo"] = MODOS_JOGO[idx]
+                    elif opcao == "Mapa":
+                        CONFIG["mapa_personalizado"] = not CONFIG["mapa_personalizado"]
                     else:
                         alterou = False
                     if alterou:
@@ -357,6 +575,117 @@ def tela_configuracoes():
                     if opcoes[selecionado] == "Voltar" or evento.key == pygame.K_ESCAPE:
                         return
 
+        await asyncio.sleep(0)
+        relogio.tick(30)
+
+
+async def tela_editor_mapa():
+    colunas = LARGURA // TAMANHO_BLOCO
+    linhas = ALTURA // TAMANHO_BLOCO
+    obstaculos = set(carregar_mapa_personalizado())
+    cursor_x, cursor_y = colunas // 2, linhas // 2
+
+    while True:
+        tela.fill(PRETO)
+        for x in range(0, LARGURA, TAMANHO_BLOCO):
+            pygame.draw.line(tela, CINZA, (x, 0), (x, ALTURA))
+        for y in range(0, ALTURA, TAMANHO_BLOCO):
+            pygame.draw.line(tela, CINZA, (0, y), (LARGURA, y))
+
+        for (ox, oy) in obstaculos:
+            pygame.draw.rect(tela, (95, 95, 95), (ox, oy, TAMANHO_BLOCO, TAMANHO_BLOCO))
+
+        cursor_pos = (cursor_x * TAMANHO_BLOCO, cursor_y * TAMANHO_BLOCO)
+        pygame.draw.rect(tela, AMARELO, (*cursor_pos, TAMANHO_BLOCO, TAMANHO_BLOCO), 3)
+
+        desenhar_texto("EDITOR DE MAPA", fonte, AMARELO, LARGURA // 2, 16, centralizado=True)
+        desenhar_texto(
+            "setas: mover   espaço/enter: alternar obstáculo   C: limpar   S: salvar   ESC: cancelar",
+            fonte, (150, 150, 150), LARGURA // 2, ALTURA - 12, centralizado=True,
+        )
+        pygame.display.update()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_UP:
+                    cursor_y = (cursor_y - 1) % linhas
+                elif evento.key == pygame.K_DOWN:
+                    cursor_y = (cursor_y + 1) % linhas
+                elif evento.key == pygame.K_LEFT:
+                    cursor_x = (cursor_x - 1) % colunas
+                elif evento.key == pygame.K_RIGHT:
+                    cursor_x = (cursor_x + 1) % colunas
+                elif evento.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    pos = (cursor_x * TAMANHO_BLOCO, cursor_y * TAMANHO_BLOCO)
+                    if pos in obstaculos:
+                        obstaculos.discard(pos)
+                    else:
+                        obstaculos.add(pos)
+                    SOM_SELECIONAR.play()
+                elif evento.key == pygame.K_c:
+                    obstaculos.clear()
+                elif evento.key == pygame.K_s:
+                    salvar_mapa_personalizado(sorted(obstaculos))
+                    return
+                elif evento.key == pygame.K_ESCAPE:
+                    return
+
+        await asyncio.sleep(0)
+        relogio.tick(30)
+
+
+async def tela_ranking():
+    ranking = carregar_ranking()
+    while True:
+        tela.fill(PRETO)
+        desenhar_texto("RANKING LOCAL", fonte_grande, AMARELO, LARGURA // 2, 36, centralizado=True)
+        if not ranking:
+            desenhar_texto("Ainda não há pontuações registradas.", fonte, BRANCO, LARGURA // 2, 110, centralizado=True)
+        else:
+            for i, registro in enumerate(ranking[:10]):
+                texto = f"{i + 1}. {registro['nome']} — {registro['pontuacao']} pts"
+                desenhar_texto(texto, fonte, BRANCO, LARGURA // 2, 85 + i * 27, centralizado=True)
+        desenhar_texto("Enter ou ESC: voltar", fonte, (150, 150, 150), LARGURA // 2, ALTURA - 15, centralizado=True)
+        pygame.display.update()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN and evento.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                return
+
+        await asyncio.sleep(0)
+        relogio.tick(30)
+
+
+async def tela_entrada_nome(pontuacao):
+    nome = ""
+    while True:
+        tela.fill(PRETO)
+        desenhar_texto("Novo recorde no ranking!", fonte_grande, AMARELO, LARGURA // 2, 90, centralizado=True)
+        desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, LARGURA // 2, 140, centralizado=True)
+        desenhar_texto("Digite seu nome:", fonte, BRANCO, LARGURA // 2, 180, centralizado=True)
+        desenhar_texto(nome + "_", fonte_grande, AMARELO, LARGURA // 2, 220, centralizado=True)
+        desenhar_texto("Enter: confirmar   Backspace: apagar", fonte, (150, 150, 150), LARGURA // 2, ALTURA - 15, centralizado=True)
+        pygame.display.update()
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_RETURN and nome.strip():
+                    return nome.strip()[:12]
+                elif evento.key == pygame.K_BACKSPACE:
+                    nome = nome[:-1]
+                elif evento.unicode.isprintable() and len(nome) < 12:
+                    nome += evento.unicode
+
+        await asyncio.sleep(0)
         relogio.tick(30)
 
 
@@ -370,21 +699,31 @@ def tela_de_pausa():
     pygame.display.update()
 
 
-def tela_de_fim(pontuacao, recorde, bateu_recorde):
+async def tela_de_fim(cobras, modo_jogo, recorde):
     tela.fill(PRETO)
-    desenhar_texto("Você perdeu!", fonte_grande, (200, 40, 40), LARGURA // 2, ALTURA // 2 - 60, centralizado=True)
-    desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, LARGURA // 2, ALTURA // 2 - 10, centralizado=True)
-    if bateu_recorde:
-        desenhar_texto("Novo recorde!", fonte, AMARELO, LARGURA // 2, ALTURA // 2 + 20, centralizado=True)
+    desenhar_texto("Fim de jogo!", fonte_grande, (200, 40, 40), LARGURA // 2, 65, centralizado=True)
+
+    if modo_jogo == "2 Jogadores":
+        p1, p2 = cobras[0]["pontuacao"], cobras[1]["pontuacao"]
+        desenhar_texto(f"Jogador 1: {p1} pontos", fonte, BRANCO, LARGURA // 2, 130, centralizado=True)
+        desenhar_texto(f"Jogador 2: {p2} pontos", fonte, BRANCO, LARGURA // 2, 158, centralizado=True)
+        if p1 > p2:
+            resultado = "Jogador 1 venceu!"
+        elif p2 > p1:
+            resultado = "Jogador 2 venceu!"
+        else:
+            resultado = "Empate!"
+        desenhar_texto(resultado, fonte, AMARELO, LARGURA // 2, 195, centralizado=True)
     else:
-        desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, ALTURA // 2 + 20, centralizado=True)
+        pontuacao = cobras[0]["pontuacao"]
+        desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, LARGURA // 2, 130, centralizado=True)
+        if pontuacao > recorde:
+            desenhar_texto("Novo recorde!", fonte, AMARELO, LARGURA // 2, 160, centralizado=True)
+        else:
+            desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, LARGURA // 2, 160, centralizado=True)
+
     desenhar_texto(
-        "R: jogar de novo    M: menu    Q: sair",
-        fonte,
-        (180, 180, 180),
-        LARGURA // 2,
-        ALTURA // 2 + 60,
-        centralizado=True,
+        "R: jogar de novo    M: menu    Q: sair", fonte, (180, 180, 180), LARGURA // 2, ALTURA - 40, centralizado=True
     )
     pygame.display.update()
 
@@ -402,91 +741,82 @@ def tela_de_fim(pontuacao, recorde, bateu_recorde):
                     pygame.quit()
                     sys.exit()
 
-
-def interpolar_posicao(origem, destino, progresso):
-    # Evita um "arrastão" visual quando a cobra atravessa de um lado ao outro da tela
-    dx = destino[0] - origem[0]
-    dy = destino[1] - origem[1]
-    if abs(dx) > TAMANHO_BLOCO * 1.5 or abs(dy) > TAMANHO_BLOCO * 1.5:
-        return destino
-    return (origem[0] + dx * progresso, origem[1] + dy * progresso)
+        await asyncio.sleep(0)
+        relogio.tick(30)
 
 
-def desenhar_jogo(
-    tema, cobra, cobra_anterior, progresso, comida, comida_especial, obstaculos,
-    pontuacao, recorde, velocidade_atual, protegido, particulas,
-):
-    tela.fill(tema["fundo"])
+def aplicar_tecla_direcao(tecla, modo, cobras):
+    jogador1 = cobras[0]
+    jogador2 = cobras[1] if len(cobras) > 1 else None
 
-    for x in range(0, LARGURA, TAMANHO_BLOCO):
-        pygame.draw.line(tela, tema["grade"], (x, 0), (x, ALTURA))
-    for y in range(0, ALTURA, TAMANHO_BLOCO):
-        pygame.draw.line(tela, tema["grade"], (0, y), (LARGURA, y))
-
-    for obstaculo in obstaculos:
-        pygame.draw.rect(tela, (95, 95, 95), (*obstaculo, TAMANHO_BLOCO, TAMANHO_BLOCO))
-        pygame.draw.rect(tela, (60, 60, 60), (*obstaculo, TAMANHO_BLOCO, TAMANHO_BLOCO), 2)
-
-    if comida_especial:
-        pulso = int(3 * math.sin(pygame.time.get_ticks() / 120))
-        centro = (comida[0] + TAMANHO_BLOCO // 2, comida[1] + TAMANHO_BLOCO // 2)
-        pygame.draw.circle(tela, DOURADO, centro, TAMANHO_BLOCO // 2 + 3 + pulso)
-        pygame.draw.circle(tela, (255, 255, 200), centro, TAMANHO_BLOCO // 3)
+    if modo == "2 Jogadores":
+        if tecla == pygame.K_w and jogador1["direcao"] != (0, TAMANHO_BLOCO):
+            jogador1["proxima_direcao"] = (0, -TAMANHO_BLOCO)
+        elif tecla == pygame.K_s and jogador1["direcao"] != (0, -TAMANHO_BLOCO):
+            jogador1["proxima_direcao"] = (0, TAMANHO_BLOCO)
+        elif tecla == pygame.K_a and jogador1["direcao"] != (TAMANHO_BLOCO, 0):
+            jogador1["proxima_direcao"] = (-TAMANHO_BLOCO, 0)
+        elif tecla == pygame.K_d and jogador1["direcao"] != (-TAMANHO_BLOCO, 0):
+            jogador1["proxima_direcao"] = (TAMANHO_BLOCO, 0)
+        elif jogador2 is not None:
+            if tecla == pygame.K_UP and jogador2["direcao"] != (0, TAMANHO_BLOCO):
+                jogador2["proxima_direcao"] = (0, -TAMANHO_BLOCO)
+            elif tecla == pygame.K_DOWN and jogador2["direcao"] != (0, -TAMANHO_BLOCO):
+                jogador2["proxima_direcao"] = (0, TAMANHO_BLOCO)
+            elif tecla == pygame.K_LEFT and jogador2["direcao"] != (TAMANHO_BLOCO, 0):
+                jogador2["proxima_direcao"] = (-TAMANHO_BLOCO, 0)
+            elif tecla == pygame.K_RIGHT and jogador2["direcao"] != (-TAMANHO_BLOCO, 0):
+                jogador2["proxima_direcao"] = (TAMANHO_BLOCO, 0)
     else:
-        pygame.draw.rect(tela, tema["comida"], (*comida, TAMANHO_BLOCO, TAMANHO_BLOCO))
-
-    for particula in particulas:
-        particula.desenhar(tela)
-
-    for i, segmento_novo in enumerate(cobra):
-        origem = cobra_anterior[i] if i < len(cobra_anterior) else segmento_novo
-        x, y = interpolar_posicao(origem, segmento_novo, progresso)
-        cor = tema["cabeca"] if i == 0 else tema["corpo"]
-        pygame.draw.rect(tela, cor, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO))
-        if protegido:
-            pygame.draw.rect(tela, DOURADO, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO), 2)
-
-    desenhar_texto(f"Pontuação: {pontuacao}", fonte, BRANCO, 10, 10)
-    desenhar_texto(f"Recorde: {recorde}", fonte, BRANCO, 10, 35)
-    desenhar_texto("P/ESC: pausar", fonte, (150, 150, 150), LARGURA - 150, 10)
-
-    if velocidade_atual >= VELOCIDADE_MAXIMA:
-        desenhar_texto("Velocidade máxima!", fonte, AMARELO, 10, 60)
-    else:
-        pontos_restantes = PONTOS_POR_NIVEL - (pontuacao % PONTOS_POR_NIVEL)
-        desenhar_texto(f"Próx. velocidade em {pontos_restantes} ponto(s)", fonte, (150, 150, 150), 10, 60)
-        progresso_barra = 1 - (pontos_restantes / PONTOS_POR_NIVEL)
-        largura_barra = 150
-        pygame.draw.rect(tela, (60, 60, 60), (10, 85, largura_barra, 8))
-        pygame.draw.rect(tela, AMARELO, (10, 85, int(largura_barra * progresso_barra), 8))
-
-    if protegido:
-        desenhar_texto("Escudo ativo!", fonte, DOURADO, 10, 105)
-
-    pygame.display.update()
+        if tecla in (pygame.K_UP, pygame.K_w) and jogador1["direcao"] != (0, TAMANHO_BLOCO):
+            jogador1["proxima_direcao"] = (0, -TAMANHO_BLOCO)
+        elif tecla in (pygame.K_DOWN, pygame.K_s) and jogador1["direcao"] != (0, -TAMANHO_BLOCO):
+            jogador1["proxima_direcao"] = (0, TAMANHO_BLOCO)
+        elif tecla in (pygame.K_LEFT, pygame.K_a) and jogador1["direcao"] != (TAMANHO_BLOCO, 0):
+            jogador1["proxima_direcao"] = (-TAMANHO_BLOCO, 0)
+        elif tecla in (pygame.K_RIGHT, pygame.K_d) and jogador1["direcao"] != (-TAMANHO_BLOCO, 0):
+            jogador1["proxima_direcao"] = (TAMANHO_BLOCO, 0)
 
 
-def rodar_jogo(indice_tema, recorde):
+async def rodar_jogo(indice_tema, recorde):
     tema = TEMAS[indice_tema]
     dificuldade = DIFICULDADES[CONFIG["dificuldade"]]
     velocidade_base = min(
         max(CONFIG["velocidade_inicial"] + dificuldade["modificador_velocidade"], VELOCIDADE_INICIAL_MIN),
         VELOCIDADE_MAXIMA,
     )
+    modo = CONFIG["modo_jogo"]
 
-    cobra = [(LARGURA // 2, ALTURA // 2)]
-    cobra_anterior = list(cobra)
-    direcao = (TAMANHO_BLOCO, 0)
-    proxima_direcao = direcao
+    if modo == "2 Jogadores":
+        cobras = [
+            criar_cobra((100, 200), (TAMANHO_BLOCO, 0), "jogador1"),
+            criar_cobra((480, 200), (-TAMANHO_BLOCO, 0), "jogador2"),
+        ]
+    elif modo == "Jogador vs Bot":
+        cobras = [
+            criar_cobra((100, 200), (TAMANHO_BLOCO, 0), "jogador1"),
+            criar_cobra((480, 200), (-TAMANHO_BLOCO, 0), "bot"),
+        ]
+    else:
+        cobras = [criar_cobra((LARGURA // 2, ALTURA // 2), (TAMANHO_BLOCO, 0), "jogador1")]
 
-    obstaculos = gerar_obstaculos(dificuldade["obstaculos"], cobra)
-    comida, comida_especial = gerar_comida(cobra + obstaculos)
+    ocupados_iniciais = []
+    for cobra in cobras:
+        ocupados_iniciais += cobra["corpo"]
 
-    pontuacao = 0
+    if CONFIG["mapa_personalizado"]:
+        mapa = carregar_mapa_personalizado()
+        obstaculos = [celula for celula in mapa if celula not in ocupados_iniciais]
+    else:
+        obstaculos = gerar_obstaculos(dificuldade["obstaculos"], ocupados_iniciais)
+
+    comida, comida_especial = gerar_comida(ocupados_iniciais + obstaculos)
+
     pausado = False
-    escudo_ate = 0  # timestamp (ms) até quando a cobra fica protegida por comida especial
     particulas = []
     tempo_acumulado = 0.0
+    fase_atual = 1
+    aviso_fase_ate = 0
 
     while True:
         dt = relogio.tick(FPS_RENDER) / 1000.0
@@ -499,103 +829,160 @@ def rodar_jogo(indice_tema, recorde):
                 if evento.key in (pygame.K_ESCAPE, pygame.K_p):
                     pausado = not pausado
                 elif not pausado:
-                    if evento.key in (pygame.K_UP, pygame.K_w) and direcao != (0, TAMANHO_BLOCO):
-                        proxima_direcao = (0, -TAMANHO_BLOCO)
-                    elif evento.key in (pygame.K_DOWN, pygame.K_s) and direcao != (0, -TAMANHO_BLOCO):
-                        proxima_direcao = (0, TAMANHO_BLOCO)
-                    elif evento.key in (pygame.K_LEFT, pygame.K_a) and direcao != (TAMANHO_BLOCO, 0):
-                        proxima_direcao = (-TAMANHO_BLOCO, 0)
-                    elif evento.key in (pygame.K_RIGHT, pygame.K_d) and direcao != (-TAMANHO_BLOCO, 0):
-                        proxima_direcao = (TAMANHO_BLOCO, 0)
+                    aplicar_tecla_direcao(evento.key, modo, cobras)
 
         if pausado:
             tela_de_pausa()
+            await asyncio.sleep(0)
             continue
 
-        velocidade_atual = min(velocidade_base + pontuacao // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA)
-        intervalo = 1.0 / velocidade_atual
-
         tempo_acumulado += dt
-        resultado_colisao = None
 
-        while tempo_acumulado >= intervalo:
-            tempo_acumulado -= intervalo
-            cobra_anterior = list(cobra)
-            direcao = proxima_direcao
-            cabeca_atual = cobra[0]
-            nova_cabeca = (cabeca_atual[0] + direcao[0], cabeca_atual[1] + direcao[1])
-
-            if CONFIG["parede_atravessavel"]:
-                nova_cabeca = (nova_cabeca[0] % LARGURA, nova_cabeca[1] % ALTURA)
-            elif (
-                nova_cabeca[0] < 0
-                or nova_cabeca[0] >= LARGURA
-                or nova_cabeca[1] < 0
-                or nova_cabeca[1] >= ALTURA
-            ):
-                resultado_colisao = "parede"
+        while any(c["viva"] for c in cobras):
+            pontuacao_max = max(c["pontuacao"] for c in cobras)
+            velocidade_atual = min(velocidade_base + pontuacao_max // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA)
+            intervalo = 1.0 / velocidade_atual
+            if tempo_acumulado < intervalo:
                 break
+            tempo_acumulado -= intervalo
+
+            for cobra in cobras:
+                if cobra["viva"]:
+                    cobra["corpo_anterior"] = list(cobra["corpo"])
+
+            for cobra in cobras:
+                if not cobra["viva"]:
+                    continue
+                if cobra["controlador"] == "bot":
+                    perigos = set(obstaculos)
+                    for outra in cobras:
+                        perigos.update(outra["corpo"])
+                    cobra["proxima_direcao"] = escolher_direcao_bot(
+                        cobra["corpo"][0], cobra["direcao"], comida, perigos
+                    )
+                cobra["direcao"] = cobra["proxima_direcao"]
+
+            novas_cabecas = {}
+            for cobra in cobras:
+                if not cobra["viva"]:
+                    continue
+                cabeca = cobra["corpo"][0]
+                d = cobra["direcao"]
+                nova = (cabeca[0] + d[0], cabeca[1] + d[1])
+                if CONFIG["parede_atravessavel"]:
+                    nova = (nova[0] % LARGURA, nova[1] % ALTURA)
+                novas_cabecas[id(cobra)] = nova
 
             agora = pygame.time.get_ticks()
-            protegido_neste_passo = agora < escudo_ate
-
-            if nova_cabeca in cobra and not protegido_neste_passo:
-                resultado_colisao = "corpo"
-                break
-
-            if nova_cabeca in obstaculos and not protegido_neste_passo:
-                resultado_colisao = "obstaculo"
-                break
-
-            cobra.insert(0, nova_cabeca)
-
-            if nova_cabeca == comida:
-                if comida_especial:
-                    pontuacao += 5
-                    escudo_ate = agora + DURACAO_ESCUDO_MS
-                    particulas += criar_particulas(*comida, DOURADO, 20)
+            for cobra in cobras:
+                if not cobra["viva"]:
+                    continue
+                nova = novas_cabecas[id(cobra)]
+                protegido = agora < cobra["escudo_ate"]
+                morreu = False
+                if not CONFIG["parede_atravessavel"] and (
+                    nova[0] < 0 or nova[0] >= LARGURA or nova[1] < 0 or nova[1] >= ALTURA
+                ):
+                    morreu = True
+                elif not protegido and nova in obstaculos:
+                    morreu = True
+                elif not protegido and nova in cobra["corpo"]:
+                    morreu = True
                 else:
-                    pontuacao += 1
-                    particulas += criar_particulas(*comida, tema["comida"], 12)
-                SOM_COMER.play()
-                comida, comida_especial = gerar_comida(cobra + obstaculos)
-            else:
-                cobra.pop()
+                    for outra in cobras:
+                        if outra is cobra or not outra["viva"]:
+                            continue
+                        if not protegido and nova in outra["corpo"]:
+                            morreu = True
+                        if nova == novas_cabecas.get(id(outra)):
+                            morreu = True
+                if morreu:
+                    cobra["viva"] = False
+                    SOM_COLIDIR.play()
 
-        if resultado_colisao:
-            SOM_COLIDIR.play()
-            return pontuacao
+            comida_comida = False
+            for cobra in cobras:
+                if not cobra["viva"]:
+                    continue
+                nova = novas_cabecas[id(cobra)]
+                cobra["corpo"].insert(0, nova)
+                if nova == comida:
+                    comida_comida = True
+                    if comida_especial:
+                        cobra["pontuacao"] += 5
+                        cobra["escudo_ate"] = agora + DURACAO_ESCUDO_MS
+                        particulas += criar_particulas(*comida, DOURADO, 20)
+                    else:
+                        cobra["pontuacao"] += 1
+                        particulas += criar_particulas(*comida, tema["comida"], 12)
+                    SOM_COMER.play()
+                else:
+                    cobra["corpo"].pop()
+
+            if comida_comida:
+                ocupados = list(obstaculos)
+                for cobra in cobras:
+                    ocupados += cobra["corpo"]
+                comida, comida_especial = gerar_comida(ocupados)
+
+            pontuacao_max = max(c["pontuacao"] for c in cobras)
+            nova_fase = calcular_fase(pontuacao_max)
+            if nova_fase > fase_atual:
+                qtd_novos = obstaculos_extra_da_fase(nova_fase) - obstaculos_extra_da_fase(fase_atual)
+                if qtd_novos > 0:
+                    ocupados = list(obstaculos) + [comida]
+                    for cobra in cobras:
+                        ocupados += cobra["corpo"]
+                    obstaculos += gerar_obstaculos(qtd_novos, ocupados)
+                fase_atual = nova_fase
+                aviso_fase_ate = pygame.time.get_ticks() + 1500
+                SOM_SELECIONAR.play()
+
+        if not any(c["viva"] for c in cobras):
+            return cobras
 
         for particula in particulas:
             particula.atualizar(dt)
         particulas = [p for p in particulas if p.viva()]
 
+        pontuacao_max = max(c["pontuacao"] for c in cobras)
+        velocidade_atual = min(velocidade_base + pontuacao_max // PONTOS_POR_NIVEL, VELOCIDADE_MAXIMA)
+        intervalo = 1.0 / velocidade_atual
         progresso = min(tempo_acumulado / intervalo, 1.0) if intervalo > 0 else 1.0
-        protegido = pygame.time.get_ticks() < escudo_ate
+
         desenhar_jogo(
-            tema, cobra, cobra_anterior, progresso, comida, comida_especial, obstaculos,
-            pontuacao, recorde, velocidade_atual, protegido, particulas,
+            tema, cobras, progresso, comida, comida_especial, obstaculos,
+            recorde, velocidade_atual, fase_atual, aviso_fase_ate, particulas,
         )
 
+        await asyncio.sleep(0)
 
-def main():
+
+async def main():
     recorde = carregar_recorde()
     carregar_config()
+    ranking = carregar_ranking()
     indice_tema = 0
 
     while True:
-        indice_tema = menu_principal(indice_tema, recorde)
+        indice_tema = await menu_principal(indice_tema, recorde)
 
         continuar = True
         while continuar:
-            pontuacao = rodar_jogo(indice_tema, recorde)
+            cobras = await rodar_jogo(indice_tema, recorde)
+            modo = CONFIG["modo_jogo"]
 
-            bateu_recorde = pontuacao > recorde
-            if bateu_recorde:
-                recorde = pontuacao
-                salvar_recorde(recorde)
+            if modo != "2 Jogadores":
+                pontuacao = cobras[0]["pontuacao"]
+                if pontuacao > recorde:
+                    recorde = pontuacao
+                    salvar_recorde(recorde)
+                if pontuacao > 0 and entra_no_ranking(ranking, pontuacao):
+                    nome = await tela_entrada_nome(pontuacao)
+                    ranking = adicionar_ao_ranking(ranking, nome, pontuacao)
+                    salvar_ranking(ranking)
 
-            escolha = tela_de_fim(pontuacao, recorde, bateu_recorde)
+            escolha = await tela_de_fim(cobras, modo, recorde)
             if escolha == "menu":
                 continuar = False
             elif escolha == "jogar":
@@ -603,4 +990,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
