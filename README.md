@@ -1,101 +1,331 @@
-# Jogo da Cobrinha (Snake)
+# 🐍 Snake Game
 
-Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](https://www.pygame.org/).
+Uma versão moderna do clássico **Jogo da Cobrinha**, desenvolvida em **Python** utilizando **Pygame**.
 
-## Como rodar
+O projeto começou como uma implementação simples do Snake e evoluiu para um jogo completo, com múltiplos modos de jogo, inteligência artificial, editor de mapas, ranking local, configurações persistentes e até uma versão experimental para navegador utilizando **Pygbag**.
 
-1. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Execute o jogo:
-   ```bash
-   python cobrinha.py
-   ```
+---
 
-## Controles
+## 📷 Preview
 
-- Setas do teclado ou `W A S D` para mover
-- Ao perder: `R` para jogar novamente, `Q` para sair
+> Adicione aqui um GIF mostrando a jogabilidade.
 
-## Controles adicionais
 
-- `P` ou `ESC` durante o jogo: pausa / despausa
-- No menu: setas para navegar, `←`/`→` para trocar de tema, `Enter` para confirmar
-- Na tela de fim de jogo: `R` joga de novo, `M` volta ao menu, `Q` sai
-- **1 Jogador / Jogador vs Bot**: setas ou `WASD` controlam o jogador
-- **2 Jogadores**: Jogador 1 usa `WASD`, Jogador 2 usa as setas
-- **Editor de Mapa**: setas movem o cursor, `Espaço`/`Enter` alterna obstáculo, `C` limpa tudo, `S` salva e sai, `ESC` cancela
-- **Ranking**: `Enter` ou `ESC` para voltar ao menu; ao bater uma pontuação alta, digite o nome e pressione `Enter`
+![Preview](assets/preview.gif)
 
-## Como está estruturado hoje
 
-- `menu_principal()` tela inicial com opções Jogar / Tema / Sair
-- `gerar_tom()` gera os efeitos sonoros na hora (sem precisar de arquivos de áudio externos)
-- `carregar_recorde()` / `salvar_recorde()` leem e gravam o recorde em `recorde.txt` (criado ao lado do script)
-- `rodar_jogo()` contém o loop principal: entrada do usuário, pausa, movimento, colisões e desenho
-- `tela_de_pausa()` mostra um overlay semitransparente com "PAUSADO"
-- `tela_de_fim()` mostra a pontuação final, se bateu recorde, e as opções de jogar de novo/menu/sair
-- Velocidade aumenta a cada `PONTOS_POR_NIVEL` pontos, até um teto (`VELOCIDADE_MAXIMA`)
-- 4 temas prontos (Clássico, Neon, Gelo, Deserto) em `TEMAS`, escolhidos no menu
-- `tela_configuracoes()` ajusta volume (0-100%), velocidade inicial (4-15), tipo de parede (sólida/atravessável) e dificuldade, salvando tudo em `config.txt`
-- Durante o jogo, um texto + barra de progresso mostram quantos pontos faltam para o próximo aumento de velocidade
-- Dificuldade (Fácil / Médio / Difícil) define a quantidade de obstáculos no mapa e ajusta a velocidade base
-- Parede "atravessável": a cobra sai de um lado da tela e reaparece do outro, em vez de morrer
-- Obstáculos fixos (cinza) matam a cobra ao encostar, igual à colisão com o próprio corpo
-- Comida dourada (~20% de chance) vale 5 pontos e dá um "escudo" de 3 segundos: durante esse tempo a cobra atravessa obstáculos e o próprio corpo sem morrer (indicado por um contorno dourado piscando)
-- Movimento com animação suave: a cobra é desenhada interpolando entre a posição anterior e a nova a cada quadro, em vez de "pular" de bloco em bloco (o loop de desenho roda a 60 FPS, desacoplado da velocidade lógica do jogo)
-- Partículas coloridas saem da comida ao ser comida (mais partículas e douradas na comida especial)
-- Modo de jogo (Configurações → Modo): **1 Jogador**, **2 Jogadores** (local, mesmo mapa) ou **Jogador vs Bot**
-- No modo 2 Jogadores, colisão frontal entre as duas cobras (ou uma encostar na outra) mata a(s) envolvida(s); vence quem tiver mais pontos ao final
-- `escolher_direcao_bot()` é a IA do bot: evita paredes/obstáculos/corpos e persegue a comida pela distância mais curta
-- `tela_editor_mapa()` permite desenhar um layout de obstáculos próprio, salvo em `mapa_personalizado.txt` — ativado em Configurações → Mapa: Personalizado
-- Sistema de fases: a cada `PONTOS_POR_FASE` pontos a fase sobe e novos obstáculos aparecem no mapa (até um teto), com um aviso "Fase X!" na tela
-- `tela_ranking()` e `tela_entrada_nome()` implementam um ranking local (top 10) salvo em `ranking.json`; ao terminar uma partida (fora do modo 2 Jogadores) com pontuação boa o suficiente, o jogo pede um nome
-- O jogo inteiro roda em cima de `asyncio` (loop principal e todas as telas são `async def` com `await asyncio.sleep(0)` a cada quadro), preparado para rodar no navegador via [pygbag](https://github.com/pygame-web/pygbag) — veja a seção "Versão web" abaixo
+---
 
-## Versão web (experimental, via pygbag)
+## 🚀 Tecnologias
 
-O código já está estruturado de forma compatível com [pygbag](https://github.com/pygame-web/pygbag), que empacota jogos pygame para rodar no navegador (WebAssembly), sem precisar reescrever a lógica do jogo.
+- 🐍 Python
+- 🎮 Pygame
+- ⚡ Asyncio
+- 🌐 Pygbag (versão WebAssembly)
+- 💾 JSON e arquivos locais para persistência
 
-Para testar localmente:
+---
+
+## ✨ Funcionalidades
+
+### 🎮 Modos de jogo
+
+- 1 Jogador
+- 2 Jogadores (local)
+- Jogador vs Bot (IA)
+
+---
+
+### 🐍 Mecânicas
+
+- Crescimento da cobra
+- Aumento automático da velocidade
+- Sistema de fases
+- Obstáculos dinâmicos
+- Parede sólida ou atravessável
+- Comidas especiais
+- Escudo temporário
+- Animação suave de movimento
+- Partículas ao coletar comida
+
+---
+
+### 🤖 Inteligência Artificial
+
+O projeto possui um modo **Jogador vs Bot**.
+
+A IA:
+
+- procura o menor caminho até a comida
+- evita paredes
+- evita obstáculos
+- evita colisões com o próprio corpo
+- reage dinamicamente durante a partida
+
+---
+
+### 🗺️ Editor de mapas
+
+Crie mapas personalizados diretamente dentro do jogo.
+
+É possível:
+
+- adicionar obstáculos
+- remover obstáculos
+- salvar mapas
+- reutilizar mapas nas partidas
+
+---
+
+### ⚙️ Sistema de Configurações
+
+O jogo permite configurar:
+
+- Volume
+- Velocidade inicial
+- Dificuldade
+- Tipo de parede
+- Tema visual
+- Modo de jogo
+- Mapa personalizado
+
+Todas as configurações são salvas automaticamente.
+
+---
+
+### 🏆 Ranking
+
+Sistema de ranking local com Top 10 jogadores.
+
+Recursos:
+
+- registro do nome
+- armazenamento em JSON
+- recorde permanente
+- classificação automática
+
+---
+
+### 🎨 Temas
+
+O jogo possui quatro temas visuais:
+
+- 🎮 Clássico
+- 💜 Neon
+- ❄️ Gelo
+- 🏜️ Deserto
+
+Cada tema altera completamente a aparência do jogo.
+
+---
+
+### 🔊 Áudio
+
+Os efeitos sonoros são gerados dinamicamente durante a execução.
+
+Não é necessário incluir arquivos de áudio no projeto.
+
+---
+
+## 🎮 Controles
+
+### Durante a partida
+
+| Ação | Tecla |
+|------|-------|
+| Mover | WASD ou Setas |
+| Pausar | P ou ESC |
+
+---
+
+### Menu
+
+| Ação | Tecla |
+|------|-------|
+| Navegar | Setas |
+| Alterar tema | ← → |
+| Confirmar | Enter |
+
+---
+
+### Tela de Game Over
+
+| Ação | Tecla |
+|------|-------|
+| Jogar novamente | R |
+| Voltar ao menu | M |
+| Sair | Q |
+
+---
+
+### Editor de mapas
+
+| Ação | Tecla |
+|------|-------|
+| Mover cursor | Setas |
+| Adicionar obstáculo | Espaço |
+| Salvar | S |
+| Limpar | C |
+| Cancelar | ESC |
+
+---
+
+## 📂 Estrutura do Projeto
+
+```text
+Snake/
+│
+├── cobrinha.py
+├── config.txt
+├── ranking.json
+├── recorde.txt
+├── mapa_personalizado.txt
+├── requirements.txt
+└── assets/
+```
+
+---
+
+## ⚙️ Como executar
+
+Clone o projeto
+
+```bash
+git clone https://github.com/SEU-USUARIO/snake-game.git
+```
+
+Entre na pasta
+
+```bash
+cd snake-game
+```
+
+Instale as dependências
+
+```bash
+pip install -r requirements.txt
+```
+
+Execute
+
+```bash
+python cobrinha.py
+```
+
+---
+
+## 🌐 Versão Web (Experimental)
+
+O projeto possui suporte ao **Pygbag**, permitindo executar o jogo diretamente no navegador.
+
+Instale:
+
 ```bash
 pip install pygbag
+```
+
+Execute:
+
+```bash
 python -m pygbag cobrinha.py
 ```
-Isso sobe um servidor local (normalmente em `http://localhost:8000`) servindo o jogo rodando no navegador.
 
-Observações importantes:
-- Arquivos como `recorde.txt`, `config.txt`, `ranking.json` e `mapa_personalizado.txt` são gravados no sistema de arquivos virtual do navegador; a persistência entre sessões depende da configuração de armazenamento do pygbag (IndexedDB) e pode exigir ajustes extras para funcionar de forma confiável.
-- Som e desempenho no navegador podem variar entre navegadores/dispositivos.
-- Essa é uma primeira adaptação; o ideal é testar em um navegador real antes de considerar "pronta para produção".
+Depois acesse:
 
-## Ideias de melhorias (pra ir escolhendo com calma)
+```
+http://localhost:8000
+```
 
-### Já implementadas
-- [x] Tela de menu inicial (Jogar / Sair)
-- [x] Guardar e mostrar recorde (high score) em um arquivo local
-- [x] Aumentar a velocidade gradualmente conforme a pontuação sobe
-- [x] Sons de efeito (comer, colidir) com `pygame.mixer`
-- [x] Pausar o jogo com `ESC` ou `P`
-- [x] Cores/skins diferentes para a cobra (escolher tema)
-- [x] Tela de configurações separada (volume, velocidade inicial) — salva em `config.txt`
-- [x] Contador visual do próximo aumento de velocidade (texto + barra de progresso)
+### Observações
 
-### Nível médio (implementadas)
-- [x] Paredes "atravessáveis" (sair de um lado e entrar do outro, modo sem parede) — ajustável em Configurações
-- [x] Obstáculos fixos no mapa que também matam a cobra — quantidade definida pela dificuldade
-- [x] Comidas especiais (douradas, que valem mais pontos e dão um escudo temporário)
-- [x] Modo dificuldade (fácil / médio / difícil) alterando velocidade e obstáculos
-- [x] Animação suave de movimento (em vez de "pulos" de bloco em bloco)
-- [x] Efeito visual quando a cobra come (partículas)
+- O desempenho pode variar entre navegadores.
+- Os arquivos de configuração utilizam o sistema de armazenamento virtual do navegador.
+- Esta funcionalidade ainda é experimental.
 
-### Mais avançadas (implementadas)
-- [x] Modo dois jogadores (duas cobras no mesmo mapa)
-- [x] Cobra controlada por IA (bot) para comparar performance
-- [x] Editor de mapas simples (posicionar obstáculos antes de jogar)
-- [x] Sistema de fases/níveis com objetivos diferentes (mais obstáculos a cada fase)
-- [x] Ranking local com nomes dos jogadores
-- [x] Base para versão web com `pygbag` (loop assíncrono já implementado — veja "Versão web" acima)
+---
 
-Todas as melhorias sugeridas inicialmente já foram implementadas! Novas ideias podem entrar aqui conforme forem surgindo.
+## 💾 Persistência
+
+O jogo salva automaticamente:
+
+- Configurações
+- Ranking
+- Recorde
+- Mapas personalizados
+
+Arquivos utilizados:
+
+```
+config.txt
+ranking.json
+recorde.txt
+mapa_personalizado.txt
+```
+
+---
+
+## 🚀 Roadmap
+
+### ✅ Implementado
+
+- [x] Menu inicial
+- [x] Sistema de fases
+- [x] Ranking
+- [x] Recorde
+- [x] Configurações
+- [x] IA para o Bot
+- [x] Dois jogadores
+- [x] Editor de mapas
+- [x] Temas
+- [x] Comidas especiais
+- [x] Obstáculos
+- [x] Escudo temporário
+- [x] Partículas
+- [x] Sons
+- [x] Animação suave
+- [x] Compatibilidade com navegador
+
+### 💡 Futuras melhorias
+
+- [ ] Gamepad
+- [ ] Conquistas (Achievements)
+- [ ] Multiplayer Online
+- [ ] Mais mapas
+- [ ] Mais temas
+- [ ] Sistema de missões
+- [ ] Estatísticas do jogador
+- [ ] Salvamento em nuvem
+- [ ] Leaderboard Online
+
+---
+
+## 📚 Conceitos aplicados
+
+Este projeto demonstra diversos conceitos importantes de desenvolvimento de jogos:
+
+- Programação Orientada a Objetos
+- Game Loop
+- Inteligência Artificial
+- Algoritmos de movimentação
+- Persistência em arquivos
+- Manipulação de JSON
+- Asyncio
+- Sistema de partículas
+- Animações
+- Colisão
+- Controle de estados do jogo
+- Configurações persistentes
+- Estrutura modular
+
+---
+
+## 👨‍💻 Autor
+
+Desenvolvido por **Higor Lima**.
+
+💼 Analista de Suporte IoT  
+💻 Desenvolvedor Front-end / Back-end
+
+**Tecnologias:** Python • C# • React • TypeScript • JavaScript • .NET
+
+⭐ Se este projeto foi útil para você, deixe uma estrela no repositório.
