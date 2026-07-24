@@ -8,8 +8,6 @@ O projeto começou como uma implementação simples do Snake e evoluiu para um j
 
 ## 📷 Preview
 
-> Adicione aqui um GIF mostrando a jogabilidade.
-
 
 ![Preview](assets/preview.gif)
 
