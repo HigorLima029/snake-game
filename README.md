@@ -34,8 +34,14 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - `tela_de_fim()` mostra a pontuação final, se bateu recorde, e as opções de jogar de novo/menu/sair
 - Velocidade aumenta a cada `PONTOS_POR_NIVEL` pontos, até um teto (`VELOCIDADE_MAXIMA`)
 - 4 temas prontos (Clássico, Neon, Gelo, Deserto) em `TEMAS`, escolhidos no menu
-- `tela_configuracoes()` ajusta volume (0-100%) e velocidade inicial (4-15), salvando em `config.txt`
+- `tela_configuracoes()` ajusta volume (0-100%), velocidade inicial (4-15), tipo de parede (sólida/atravessável) e dificuldade, salvando tudo em `config.txt`
 - Durante o jogo, um texto + barra de progresso mostram quantos pontos faltam para o próximo aumento de velocidade
+- Dificuldade (Fácil / Médio / Difícil) define a quantidade de obstáculos no mapa e ajusta a velocidade base
+- Parede "atravessável": a cobra sai de um lado da tela e reaparece do outro, em vez de morrer
+- Obstáculos fixos (cinza) matam a cobra ao encostar, igual à colisão com o próprio corpo
+- Comida dourada (~20% de chance) vale 5 pontos e dá um "escudo" de 3 segundos: durante esse tempo a cobra atravessa obstáculos e o próprio corpo sem morrer (indicado por um contorno dourado piscando)
+- Movimento com animação suave: a cobra é desenhada interpolando entre a posição anterior e a nova a cada quadro, em vez de "pular" de bloco em bloco (o loop de desenho roda a 60 FPS, desacoplado da velocidade lógica do jogo)
+- Partículas coloridas saem da comida ao ser comida (mais partículas e douradas na comida especial)
 
 ## Ideias de melhorias (pra ir escolhendo com calma)
 
@@ -49,14 +55,13 @@ Versão simples do clássico jogo da cobrinha, feita em Python com [pygame](http
 - [x] Tela de configurações separada (volume, velocidade inicial) — salva em `config.txt`
 - [x] Contador visual do próximo aumento de velocidade (texto + barra de progresso)
 
-
-### Nível médio
-- [ ] Paredes "atravessáveis" (sair de um lado e entiar do outro, modo sem parede)
-- [ ] Obstáculos fixos no mapa que também matam a cobra
-- [ ] Comidas especiais (douradas, que valem mais pontos ou dão efeitos temporários)
-- [ ] Modo dificuldade (fácil / médio / difícil) alterando velocidade e obstáculos
-- [ ] Animação suave de movimento (em vez de "pulos" de bloco em bloco)
-- [ ] Efeito visual quando a cobra come (partículas, brilho)
+### Nível médio (implementadas)
+- [x] Paredes "atravessáveis" (sair de um lado e entrar do outro, modo sem parede) — ajustável em Configurações
+- [x] Obstáculos fixos no mapa que também matam a cobra — quantidade definida pela dificuldade
+- [x] Comidas especiais (douradas, que valem mais pontos e dão um escudo temporário)
+- [x] Modo dificuldade (fácil / médio / difícil) alterando velocidade e obstáculos
+- [x] Animação suave de movimento (em vez de "pulos" de bloco em bloco)
+- [x] Efeito visual quando a cobra come (partículas)
 
 ### Mais avançadas
 - [ ] Modo dois jogadores (duas cobras no mesmo mapa)
