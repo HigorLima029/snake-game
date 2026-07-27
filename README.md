@@ -232,7 +232,7 @@ pip install pygbag
 Execute:
 
 ```bash
-python -m pygbag cobrinha.py
+python -m pygbag main.py
 ```
 
 Depois acesse:
