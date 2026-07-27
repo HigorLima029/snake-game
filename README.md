@@ -171,15 +171,22 @@ Não é necessário incluir arquivos de áudio no projeto.
 ## 📂 Estrutura do Projeto
 
 ```text
-Snake/
-│
-├── cobrinha.py
-├── config.txt
-├── ranking.json
-├── recorde.txt
-├── mapa_personalizado.txt
-├── requirements.txt
-└── assets/
+jogo-cobrinha/
+├── main.py                  # ponto de entrada (python main.py)
+├── requirements.txt         # dependências de runtime (pygame, numpy)
+├── requirements-dev.txt     # + pytest, para rodar os testes
+├── conftest.py              # configuração dos testes (SDL headless, sys.path)
+├── pytest.ini
+├── cobrinha/                # pacote com o código do jogo
+│   ├── config.py            # constantes, tipos e persistência (config/recorde/ranking/mapa)
+│   ├── sons.py               # geração e controle dos efeitos sonoros
+│   ├── entidades.py          # Cobra, Particula, geração de mundo, IA do bot, fases
+│   ├── telas.py               # menu, configurações, editor de mapa, ranking, pausa, fim
+│   └── jogo.py                # entrada de teclado, laço principal e orquestração (main)
+└── tests/                   # suíte de testes automatizados (pytest)
+    ├── test_config.py
+    ├── test_entidades.py
+    └── test_jogo.py
 ```
 
 ---
@@ -321,7 +328,7 @@ Este projeto demonstra diversos conceitos importantes de desenvolvimento de jogo
 
 Desenvolvido por **Higor Lima**.
 
-💼 Analista de Suporte IoT  
+💼 Líder no desenvolvimento IoT  
 💻 Desenvolvedor Front-end / Back-end
 
 **Tecnologias:** Python • C# • React • TypeScript • JavaScript • .NET
