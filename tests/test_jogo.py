@@ -67,7 +67,10 @@ def test_aplicar_tecla_direcao_dois_jogadores_wasd_e_setas():
 
 
 def test_rodar_jogo_morre_na_parede(monkeypatch):
-    monkeypatch.setattr(pygame, "event", pygame.event)
+    # Fixa a comida fora da linha reta da cobra, para o teste não ser afetado
+    # pelo acaso (senão, a comida poderia nascer no caminho e ser comida antes
+    # da colisão, mudando a pontuação esperada).
+    monkeypatch.setattr(jogo, "gerar_comida", lambda ocupados: ((10, 380), False))
     monkeypatch.setattr(pygame.event, "get", _fake_event_get_quit_apos(300))
 
     cobras = asyncio.run(jogo.rodar_jogo(0, 0))

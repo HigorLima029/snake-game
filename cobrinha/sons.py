@@ -28,7 +28,33 @@ SOM_COLIDIR: pygame.mixer.Sound = gerar_tom(140, duracao=0.35, volume=0.4)
 SOM_SELECIONAR: pygame.mixer.Sound = gerar_tom(600, duracao=0.06, volume=0.25)
 
 
+def gerar_musica_fundo(volume: float = 0.5) -> pygame.mixer.Sound:
+    """Gera um loop musical simples concatenando algumas notas curtas.
+
+    Não usa nenhum arquivo de áudio externo — cada nota é gerada com
+    ``gerar_tom`` e as amostras são concatenadas em um único ``Sound``,
+    que depois é tocado em loop com ``.play(loops=-1)``.
+    """
+    notas_hz = (261.63, 293.66, 329.63, 392.00, 329.63, 293.66)  # dó-ré-mi-sol-mi-ré
+    partes = [gerar_tom(nota, duracao=0.35, volume=volume) for nota in notas_hz]
+    amostras = [pygame.sndarray.array(parte) for parte in partes]
+    musica = np.concatenate(amostras, axis=0)
+    return pygame.sndarray.make_sound(np.ascontiguousarray(musica))
+
+
+MUSICA_FUNDO: pygame.mixer.Sound = gerar_musica_fundo()
+
+
+def tocar_musica_fundo() -> None:
+    MUSICA_FUNDO.play(loops=-1)
+
+
+def parar_musica_fundo() -> None:
+    MUSICA_FUNDO.stop()
+
+
 def aplicar_volume(volume: float) -> None:
-    """Define o volume (0.0 a 1.0) em todos os efeitos sonoros do jogo."""
+    """Define o volume (0.0 a 1.0) em todos os efeitos sonoros e na música de fundo."""
     for som in (SOM_COMER, SOM_COLIDIR, SOM_SELECIONAR):
         som.set_volume(volume)
+    MUSICA_FUNDO.set_volume(volume * 0.5)  # música um pouco mais discreta que os efeitos

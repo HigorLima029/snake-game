@@ -35,6 +35,7 @@ class ConfiguracaoJogo(TypedDict):
     dificuldade: str
     modo_jogo: str
     mapa_personalizado: bool
+    musica_ativada: bool
 
 
 class RegistroRanking(TypedDict):
@@ -82,6 +83,7 @@ CONFIG: ConfiguracaoJogo = {
     "dificuldade": "Médio",
     "modo_jogo": "1 Jogador",
     "mapa_personalizado": False,
+    "musica_ativada": True,
 }
 
 # Cada dificuldade define quantos obstáculos existem no mapa e um ajuste na velocidade base
@@ -101,6 +103,14 @@ pygame.display.set_caption("Jogo da Cobrinha")
 relogio: pygame.time.Clock = pygame.time.Clock()
 fonte: pygame.font.Font = pygame.font.SysFont("arial", 20)
 fonte_grande: pygame.font.Font = pygame.font.SysFont("arial", 44)
+
+# ---------- Gamepad/controle ----------
+pygame.joystick.init()
+JOYSTICKS: List[pygame.joystick.Joystick] = []
+for _indice_joystick in range(pygame.joystick.get_count()):
+    _joystick = pygame.joystick.Joystick(_indice_joystick)
+    _joystick.init()
+    JOYSTICKS.append(_joystick)
 
 # ---------- Temas ----------
 TEMAS: List[Tema] = [
@@ -179,6 +189,8 @@ def carregar_config() -> None:
                     CONFIG["modo_jogo"] = linhas[4].strip()
                 if len(linhas) > 5:
                     CONFIG["mapa_personalizado"] = linhas[5].strip() == "1"
+                if len(linhas) > 6:
+                    CONFIG["musica_ativada"] = linhas[6].strip() == "1"
         except (ValueError, OSError, IndexError):
             pass
 
@@ -188,7 +200,8 @@ def salvar_config() -> None:
         arquivo.write(
             f"{CONFIG['volume']}\n{CONFIG['velocidade_inicial']}\n"
             f"{1 if CONFIG['parede_atravessavel'] else 0}\n{CONFIG['dificuldade']}\n"
-            f"{CONFIG['modo_jogo']}\n{1 if CONFIG['mapa_personalizado'] else 0}"
+            f"{CONFIG['modo_jogo']}\n{1 if CONFIG['mapa_personalizado'] else 0}\n"
+            f"{1 if CONFIG['musica_ativada'] else 0}"
         )
 
 

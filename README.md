@@ -219,6 +219,15 @@ python cobrinha.py
 
 ---
 
+## Como rodar os testes
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+A suíte cobre principalmente `entidades.py` e `config.py` (funções puras: geração de mundo, IA do bot, fases, persistência) e tem alguns testes de integração para `jogo.py` (colisão com parede/obstáculo, modo 2 Jogadores, mapeamento de teclado). As telas com laço de tela cheia (menu, configurações etc.) não têm testes automatizados — são mais fáceis de validar jogando.
+
 ## 🌐 Versão Web (Experimental)
 
 O projeto possui suporte ao **Pygbag**, permitindo executar o jogo diretamente no navegador.

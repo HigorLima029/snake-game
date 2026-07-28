@@ -9,13 +9,114 @@ from __future__ import annotations
 import asyncio
 import math
 import sys
-from typing import List
+from typing import List, Optional
 
 import pygame
 
 from . import config, sons
 from .config import Cor
 from .entidades import Cobra, Particula, interpolar_posicao
+
+LIMIAR_EIXO_JOYSTICK = 0.5
+
+
+def tecla_virtual_do_joystick(evento: pygame.event.Event) -> Optional[int]:
+    """Traduz eventos de joystick/gamepad para o código de tecla equivalente.
+
+    Assim, os mesmos trechos de código que já tratam teclado (setas, Enter,
+    ESC) funcionam também com um controle conectado, sem duplicar a lógica
+    de navegação em cada tela. Botão 0 (geralmente A/Cross) = confirmar;
+    botão 1 (geralmente B/Circle) = voltar/pausar.
+    """
+    if evento.type == pygame.JOYHATMOTION:
+        x, y = evento.value
+        if y == 1:
+            return pygame.K_UP
+        if y == -1:
+            return pygame.K_DOWN
+        if x == -1:
+            return pygame.K_LEFT
+        if x == 1:
+            return pygame.K_RIGHT
+    elif evento.type == pygame.JOYAXISMOTION:
+        if evento.axis == 0:
+            if evento.value < -LIMIAR_EIXO_JOYSTICK:
+                return pygame.K_LEFT
+            if evento.value > LIMIAR_EIXO_JOYSTICK:
+                return pygame.K_RIGHT
+        elif evento.axis == 1:
+            if evento.value < -LIMIAR_EIXO_JOYSTICK:
+                return pygame.K_UP
+            if evento.value > LIMIAR_EIXO_JOYSTICK:
+                return pygame.K_DOWN
+    elif evento.type == pygame.JOYBUTTONDOWN:
+        if evento.button == 0:
+            return pygame.K_RETURN
+        if evento.button == 1:
+            return pygame.K_ESCAPE
+    return None
+
+
+async def fade_out(duracao: float = 0.25) -> None:
+    """Escurece gradualmente o conteúdo que já está desenhado na tela até preto."""
+    captura = config.tela.copy()
+    passos = max(1, int(duracao * config.FPS_RENDER))
+    overlay = pygame.Surface((config.LARGURA, config.ALTURA))
+    overlay.fill(config.PRETO)
+    for passo in range(1, passos + 1):
+        config.tela.blit(captura, (0, 0))
+        overlay.set_alpha(int(255 * passo / passos))
+        config.tela.blit(overlay, (0, 0))
+        pygame.display.update()
+        await asyncio.sleep(0)
+        config.relogio.tick(config.FPS_RENDER)
+
+
+async def fade_in(duracao: float = 0.25) -> None:
+    """Revela gradualmente o conteúdo já desenhado na tela (chamar após desenhar o novo quadro)."""
+    captura = config.tela.copy()
+    passos = max(1, int(duracao * config.FPS_RENDER))
+    overlay = pygame.Surface((config.LARGURA, config.ALTURA))
+    overlay.fill(config.PRETO)
+    for passo in range(passos, -1, -1):
+        config.tela.blit(captura, (0, 0))
+        overlay.set_alpha(int(255 * passo / passos))
+        config.tela.blit(overlay, (0, 0))
+        pygame.display.update()
+        await asyncio.sleep(0)
+        config.relogio.tick(config.FPS_RENDER)
+
+
+def _desenhar_cabeca(tela: pygame.Surface, x: float, y: float, cor: Cor, direcao: config.Direcao) -> None:
+    bloco = config.TAMANHO_BLOCO
+    pygame.draw.rect(tela, cor, (x, y, bloco, bloco), border_radius=6)
+
+    raio_olho = max(2, bloco // 8)
+    cx, cy = x + bloco / 2, y + bloco / 2
+    deslocamento = bloco * 0.22
+
+    if direcao == (0, -bloco):  # cima
+        olhos = ((cx - deslocamento, cy - deslocamento * 0.6), (cx + deslocamento, cy - deslocamento * 0.6))
+    elif direcao == (0, bloco):  # baixo
+        olhos = ((cx - deslocamento, cy + deslocamento * 0.6), (cx + deslocamento, cy + deslocamento * 0.6))
+    elif direcao == (-bloco, 0):  # esquerda
+        olhos = ((cx - deslocamento * 0.6, cy - deslocamento), (cx - deslocamento * 0.6, cy + deslocamento))
+    else:  # direita (padrão)
+        olhos = ((cx + deslocamento * 0.6, cy - deslocamento), (cx + deslocamento * 0.6, cy + deslocamento))
+
+    for olho_x, olho_y in olhos:
+        pygame.draw.circle(tela, config.BRANCO, (int(olho_x), int(olho_y)), raio_olho)
+        pygame.draw.circle(tela, config.PRETO, (int(olho_x), int(olho_y)), max(1, raio_olho // 2))
+
+
+def _desenhar_segmento_corpo(tela: pygame.Surface, x: float, y: float, cor: Cor, indice: int) -> None:
+    bloco = config.TAMANHO_BLOCO
+    pygame.draw.rect(tela, cor, (x, y, bloco, bloco), border_radius=4)
+    # padrão simples de "escama": um círculo mais claro alternando a cada segmento
+    if indice % 2 == 0:
+        cor_escama = tuple(min(255, canal + 35) for canal in cor)
+        centro = (int(x + bloco / 2), int(y + bloco / 2))
+        pygame.draw.circle(tela, cor_escama, centro, int(bloco * 0.22))
 
 
 def desenhar_texto(
@@ -84,7 +185,10 @@ def desenhar_jogo(
             cor = cor_cabeca if i == 0 else cor_corpo
             if not cobra.viva:
                 cor = (80, 80, 80)
-            pygame.draw.rect(tela, cor, (x, y, config.TAMANHO_BLOCO, config.TAMANHO_BLOCO))
+            if i == 0:
+                _desenhar_cabeca(tela, x, y, cor, cobra.direcao)
+            else:
+                _desenhar_segmento_corpo(tela, x, y, cor, i)
             if protegido:
                 pygame.draw.rect(tela, config.DOURADO, (x, y, config.TAMANHO_BLOCO, config.TAMANHO_BLOCO), 2)
 
@@ -125,6 +229,7 @@ def desenhar_jogo(
 async def menu_principal(indice_tema: int, recorde: int) -> int:
     opcoes = ["Jogar", "Tema", "Configurações", "Editor de Mapa", "Ranking", "Sair"]
     selecionado = 0
+    primeiro_quadro = True
 
     while True:
         tema = config.TEMAS[indice_tema]
@@ -149,24 +254,29 @@ async def menu_principal(indice_tema: int, recorde: int) -> int:
         )
         pygame.display.update()
 
+        if primeiro_quadro:
+            await fade_in()
+            primeiro_quadro = False
+
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_UP, pygame.K_w):
+            tecla = evento.key if evento.type == pygame.KEYDOWN else tecla_virtual_do_joystick(evento)
+            if tecla is not None:
+                if tecla in (pygame.K_UP, pygame.K_w):
                     selecionado = (selecionado - 1) % len(opcoes)
                     sons.SOM_SELECIONAR.play()
-                elif evento.key in (pygame.K_DOWN, pygame.K_s):
+                elif tecla in (pygame.K_DOWN, pygame.K_s):
                     selecionado = (selecionado + 1) % len(opcoes)
                     sons.SOM_SELECIONAR.play()
-                elif evento.key in (pygame.K_LEFT, pygame.K_a) and opcoes[selecionado] == "Tema":
+                elif tecla in (pygame.K_LEFT, pygame.K_a) and opcoes[selecionado] == "Tema":
                     indice_tema = (indice_tema - 1) % len(config.TEMAS)
                     sons.SOM_SELECIONAR.play()
-                elif evento.key in (pygame.K_RIGHT, pygame.K_d) and opcoes[selecionado] == "Tema":
+                elif tecla in (pygame.K_RIGHT, pygame.K_d) and opcoes[selecionado] == "Tema":
                     indice_tema = (indice_tema + 1) % len(config.TEMAS)
                     sons.SOM_SELECIONAR.play()
-                elif evento.key == pygame.K_RETURN:
+                elif tecla == pygame.K_RETURN:
                     if opcoes[selecionado] == "Jogar":
                         return indice_tema
                     elif opcoes[selecionado] == "Configurações":
@@ -184,12 +294,12 @@ async def menu_principal(indice_tema: int, recorde: int) -> int:
 
 
 async def tela_configuracoes() -> None:
-    opcoes = ["Volume", "Velocidade inicial", "Parede", "Dificuldade", "Modo", "Mapa", "Voltar"]
+    opcoes = ["Volume", "Velocidade inicial", "Parede", "Dificuldade", "Modo", "Mapa", "Música", "Voltar"]
     selecionado = 0
 
     while True:
         config.tela.fill(config.PRETO)
-        desenhar_texto("CONFIGURAÇÕES", config.fonte_grande, config.AMARELO, config.LARGURA // 2, 35, centralizado=True)
+        desenhar_texto("CONFIGURAÇÕES", config.fonte_grande, config.AMARELO, config.LARGURA // 2, 30, centralizado=True)
 
         for i, opcao in enumerate(opcoes):
             cor = config.AMARELO if i == selecionado else config.BRANCO
@@ -207,9 +317,12 @@ async def tela_configuracoes() -> None:
             elif opcao == "Mapa":
                 estado = "Personalizado" if config.CONFIG["mapa_personalizado"] else "Aleatório"
                 texto = f"< Mapa: {estado} >"
+            elif opcao == "Música":
+                estado = "Ativada" if config.CONFIG["musica_ativada"] else "Desativada"
+                texto = f"< Música: {estado} >"
             else:
                 texto = opcao
-            desenhar_texto(texto, config.fonte, cor, config.LARGURA // 2, 78 + i * 33, centralizado=True)
+            desenhar_texto(texto, config.fonte, cor, config.LARGURA // 2, 72 + i * 31, centralizado=True)
 
         desenhar_texto(
             "esquerda/direita: ajustar   Enter/ESC: voltar",
@@ -221,47 +334,55 @@ async def tela_configuracoes() -> None:
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if evento.type == pygame.KEYDOWN:
-                if evento.key in (pygame.K_UP, pygame.K_w):
-                    selecionado = (selecionado - 1) % len(opcoes)
-                    sons.SOM_SELECIONAR.play()
-                elif evento.key in (pygame.K_DOWN, pygame.K_s):
-                    selecionado = (selecionado + 1) % len(opcoes)
-                    sons.SOM_SELECIONAR.play()
-                elif evento.key in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
-                    direita = evento.key in (pygame.K_RIGHT, pygame.K_d)
-                    opcao = opcoes[selecionado]
-                    alterou = True
-                    if opcao == "Volume":
-                        delta = 0.1 if direita else -0.1
-                        config.CONFIG["volume"] = round(min(max(config.CONFIG["volume"] + delta, 0.0), 1.0), 2)
-                        sons.aplicar_volume(config.CONFIG["volume"])
-                    elif opcao == "Velocidade inicial":
-                        delta = 1 if direita else -1
-                        config.CONFIG["velocidade_inicial"] = min(
-                            max(config.CONFIG["velocidade_inicial"] + delta, config.VELOCIDADE_INICIAL_MIN),
-                            config.VELOCIDADE_INICIAL_MAX,
-                        )
-                    elif opcao == "Parede":
-                        config.CONFIG["parede_atravessavel"] = not config.CONFIG["parede_atravessavel"]
-                    elif opcao == "Dificuldade":
-                        idx = config.LISTA_DIFICULDADES.index(config.CONFIG["dificuldade"])
-                        idx = (idx + (1 if direita else -1)) % len(config.LISTA_DIFICULDADES)
-                        config.CONFIG["dificuldade"] = config.LISTA_DIFICULDADES[idx]
-                    elif opcao == "Modo":
-                        idx = config.MODOS_JOGO.index(config.CONFIG["modo_jogo"])
-                        idx = (idx + (1 if direita else -1)) % len(config.MODOS_JOGO)
-                        config.CONFIG["modo_jogo"] = config.MODOS_JOGO[idx]
-                    elif opcao == "Mapa":
-                        config.CONFIG["mapa_personalizado"] = not config.CONFIG["mapa_personalizado"]
+            tecla = evento.key if evento.type == pygame.KEYDOWN else tecla_virtual_do_joystick(evento)
+            if tecla is None:
+                continue
+            if tecla in (pygame.K_UP, pygame.K_w):
+                selecionado = (selecionado - 1) % len(opcoes)
+                sons.SOM_SELECIONAR.play()
+            elif tecla in (pygame.K_DOWN, pygame.K_s):
+                selecionado = (selecionado + 1) % len(opcoes)
+                sons.SOM_SELECIONAR.play()
+            elif tecla in (pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d):
+                direita = tecla in (pygame.K_RIGHT, pygame.K_d)
+                opcao = opcoes[selecionado]
+                alterou = True
+                if opcao == "Volume":
+                    delta = 0.1 if direita else -0.1
+                    config.CONFIG["volume"] = round(min(max(config.CONFIG["volume"] + delta, 0.0), 1.0), 2)
+                    sons.aplicar_volume(config.CONFIG["volume"])
+                elif opcao == "Velocidade inicial":
+                    delta = 1 if direita else -1
+                    config.CONFIG["velocidade_inicial"] = min(
+                        max(config.CONFIG["velocidade_inicial"] + delta, config.VELOCIDADE_INICIAL_MIN),
+                        config.VELOCIDADE_INICIAL_MAX,
+                    )
+                elif opcao == "Parede":
+                    config.CONFIG["parede_atravessavel"] = not config.CONFIG["parede_atravessavel"]
+                elif opcao == "Dificuldade":
+                    idx = config.LISTA_DIFICULDADES.index(config.CONFIG["dificuldade"])
+                    idx = (idx + (1 if direita else -1)) % len(config.LISTA_DIFICULDADES)
+                    config.CONFIG["dificuldade"] = config.LISTA_DIFICULDADES[idx]
+                elif opcao == "Modo":
+                    idx = config.MODOS_JOGO.index(config.CONFIG["modo_jogo"])
+                    idx = (idx + (1 if direita else -1)) % len(config.MODOS_JOGO)
+                    config.CONFIG["modo_jogo"] = config.MODOS_JOGO[idx]
+                elif opcao == "Mapa":
+                    config.CONFIG["mapa_personalizado"] = not config.CONFIG["mapa_personalizado"]
+                elif opcao == "Música":
+                    config.CONFIG["musica_ativada"] = not config.CONFIG["musica_ativada"]
+                    if config.CONFIG["musica_ativada"]:
+                        sons.tocar_musica_fundo()
                     else:
-                        alterou = False
-                    if alterou:
-                        sons.SOM_SELECIONAR.play()
-                        config.salvar_config()
-                elif evento.key in (pygame.K_RETURN, pygame.K_ESCAPE):
-                    if opcoes[selecionado] == "Voltar" or evento.key == pygame.K_ESCAPE:
-                        return
+                        sons.parar_musica_fundo()
+                else:
+                    alterou = False
+                if alterou:
+                    sons.SOM_SELECIONAR.play()
+                    config.salvar_config()
+            elif tecla in (pygame.K_RETURN, pygame.K_ESCAPE):
+                if opcoes[selecionado] == "Voltar" or tecla == pygame.K_ESCAPE:
+                    return
 
         await asyncio.sleep(0)
         config.relogio.tick(30)
@@ -297,29 +418,31 @@ async def tela_editor_mapa() -> None:
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_UP:
-                    cursor_y = (cursor_y - 1) % linhas
-                elif evento.key == pygame.K_DOWN:
-                    cursor_y = (cursor_y + 1) % linhas
-                elif evento.key == pygame.K_LEFT:
-                    cursor_x = (cursor_x - 1) % colunas
-                elif evento.key == pygame.K_RIGHT:
-                    cursor_x = (cursor_x + 1) % colunas
-                elif evento.key in (pygame.K_SPACE, pygame.K_RETURN):
-                    pos = (cursor_x * config.TAMANHO_BLOCO, cursor_y * config.TAMANHO_BLOCO)
-                    if pos in obstaculos:
-                        obstaculos.discard(pos)
-                    else:
-                        obstaculos.add(pos)
-                    sons.SOM_SELECIONAR.play()
-                elif evento.key == pygame.K_c:
-                    obstaculos.clear()
-                elif evento.key == pygame.K_s:
-                    config.salvar_mapa_personalizado(sorted(obstaculos))
-                    return
-                elif evento.key == pygame.K_ESCAPE:
-                    return
+            tecla = evento.key if evento.type == pygame.KEYDOWN else tecla_virtual_do_joystick(evento)
+            if tecla is None:
+                continue
+            if tecla == pygame.K_UP:
+                cursor_y = (cursor_y - 1) % linhas
+            elif tecla == pygame.K_DOWN:
+                cursor_y = (cursor_y + 1) % linhas
+            elif tecla == pygame.K_LEFT:
+                cursor_x = (cursor_x - 1) % colunas
+            elif tecla == pygame.K_RIGHT:
+                cursor_x = (cursor_x + 1) % colunas
+            elif tecla in (pygame.K_SPACE, pygame.K_RETURN):
+                pos = (cursor_x * config.TAMANHO_BLOCO, cursor_y * config.TAMANHO_BLOCO)
+                if pos in obstaculos:
+                    obstaculos.discard(pos)
+                else:
+                    obstaculos.add(pos)
+                sons.SOM_SELECIONAR.play()
+            elif tecla == pygame.K_c:
+                obstaculos.clear()
+            elif tecla == pygame.K_s:
+                config.salvar_mapa_personalizado(sorted(obstaculos))
+                return
+            elif tecla == pygame.K_ESCAPE:
+                return
 
         await asyncio.sleep(0)
         config.relogio.tick(30)
@@ -349,7 +472,8 @@ async def tela_ranking() -> None:
             if evento.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if evento.type == pygame.KEYDOWN and evento.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+            tecla = evento.key if evento.type == pygame.KEYDOWN else tecla_virtual_do_joystick(evento)
+            if tecla in (pygame.K_RETURN, pygame.K_ESCAPE):
                 return
 
         await asyncio.sleep(0)
@@ -431,7 +555,12 @@ async def tela_de_fim(cobras: List[Cobra], modo_jogo: str, recorde: int) -> str:
         "R: jogar de novo    M: menu    Q: sair", config.fonte, (180, 180, 180),
         config.LARGURA // 2, config.ALTURA - 40, centralizado=True,
     )
+    desenhar_texto(
+        "(no controle: A = jogar de novo, B = menu)", config.fonte, (140, 140, 140),
+        config.LARGURA // 2, config.ALTURA - 18, centralizado=True,
+    )
     pygame.display.update()
+    await fade_in()
 
     while True:
         for evento in pygame.event.get():
@@ -446,6 +575,12 @@ async def tela_de_fim(cobras: List[Cobra], modo_jogo: str, recorde: int) -> str:
                 if evento.key == pygame.K_q:
                     pygame.quit()
                     sys.exit()
+            elif evento.type in (pygame.JOYBUTTONDOWN, pygame.JOYHATMOTION, pygame.JOYAXISMOTION):
+                tecla = tecla_virtual_do_joystick(evento)
+                if tecla == pygame.K_RETURN:
+                    return "jogar"
+                if tecla == pygame.K_ESCAPE:
+                    return "menu"
 
         await asyncio.sleep(0)
         config.relogio.tick(30)

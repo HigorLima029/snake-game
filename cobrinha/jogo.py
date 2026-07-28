@@ -99,6 +99,12 @@ async def rodar_jogo(indice_tema: int, recorde: int) -> List[Cobra]:
     fase_atual = 1
     aviso_fase_ate = 0
 
+    telas.desenhar_jogo(
+        tema, cobras, 1.0, comida, comida_especial, obstaculos,
+        recorde, velocidade_base, fase_atual, aviso_fase_ate, particulas,
+    )
+    await telas.fade_in()
+
     while True:
         dt = config.relogio.tick(config.FPS_RENDER) / 1000.0
 
@@ -111,6 +117,12 @@ async def rodar_jogo(indice_tema: int, recorde: int) -> List[Cobra]:
                     pausado = not pausado
                 elif not pausado:
                     aplicar_tecla_direcao(evento.key, modo, cobras)
+            elif evento.type in (pygame.JOYBUTTONDOWN, pygame.JOYHATMOTION, pygame.JOYAXISMOTION):
+                tecla = telas.tecla_virtual_do_joystick(evento)
+                if tecla == pygame.K_ESCAPE:
+                    pausado = not pausado
+                elif tecla is not None and not pausado:
+                    aplicar_tecla_direcao(tecla, modo, cobras)
 
         if pausado:
             telas.tela_de_pausa()
@@ -241,11 +253,14 @@ async def main() -> None:
     recorde = config.carregar_recorde()
     config.carregar_config()
     sons.aplicar_volume(config.CONFIG["volume"])
+    if config.CONFIG["musica_ativada"]:
+        sons.tocar_musica_fundo()
     ranking = config.carregar_ranking()
     indice_tema = 0
 
     while True:
         indice_tema = await telas.menu_principal(indice_tema, recorde)
+        await telas.fade_out()
 
         continuar = True
         while continuar:
@@ -262,8 +277,11 @@ async def main() -> None:
                     ranking = config.adicionar_ao_ranking(ranking, nome, pontuacao)
                     config.salvar_ranking(ranking)
 
+            await telas.fade_out()
             escolha = await telas.tela_de_fim(cobras, modo, recorde)
             if escolha == "menu":
                 continuar = False
+                await telas.fade_out()
             elif escolha == "jogar":
+                await telas.fade_out()
                 continue
